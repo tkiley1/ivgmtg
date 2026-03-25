@@ -180,7 +180,7 @@ export default function MatchPage({
                   </div>
                 </div>
                 <div className="text-xs text-muted">
-                  Total must not exceed {tournament.games_per_round} (games per round).
+                  Total must not exceed {tournament.games_per_round} (best of {tournament.games_per_round}).
                   Current total: {myGames + oppGames + draws}
                 </div>
                 <button type="submit" disabled={loading || (myGames + oppGames + draws) > tournament.games_per_round} className="btn-primary w-full justify-center">

@@ -89,8 +89,8 @@ export default function CreateTournamentPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-muted mb-1">Games per Round</label>
-            <input type="number" value={gamesPerRound} onChange={(e) => setGamesPerRound(Number(e.target.value))} className="input" min={1} max={7} required />
+            <label className="block text-sm text-muted mb-1">Best of</label>
+            <input type="number" value={gamesPerRound} onChange={(e) => setGamesPerRound(Number(e.target.value))} className="input" min={1} max={7} step={2} required />
           </div>
 
           <div>

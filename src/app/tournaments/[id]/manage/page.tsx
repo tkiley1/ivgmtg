@@ -234,7 +234,7 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
                 <input type="number" value={editRounds} onChange={e => setEditRounds(Number(e.target.value))} className="input" min={1} max={20} />
               </div>
               <div>
-                <label className="block text-sm text-muted mb-1">Games/Round</label>
+                <label className="block text-sm text-muted mb-1">Best of</label>
                 <input type="number" value={editGames} onChange={e => setEditGames(Number(e.target.value))} className="input" min={1} max={7} />
               </div>
               <div>
