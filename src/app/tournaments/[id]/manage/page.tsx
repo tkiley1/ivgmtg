@@ -93,6 +93,28 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
     else load()
   }
 
+  const handleRemovePlayer = async (userId: string, username: string) => {
+    if (!confirm(`Remove ${username} from this tournament?`)) return
+    setError('')
+
+    if (tournament.status === 'pending') {
+      // Before tournament starts, fully delete the participant
+      await supabase
+        .from('tournament_participants')
+        .delete()
+        .eq('tournament_id', id)
+        .eq('user_id', userId)
+    } else {
+      // During tournament, mark as dropped
+      await supabase
+        .from('tournament_participants')
+        .update({ status: 'dropped' })
+        .eq('tournament_id', id)
+        .eq('user_id', userId)
+    }
+    load()
+  }
+
   const handleCancel = async () => {
     if (!confirm('Are you sure you want to cancel this tournament? This cannot be undone.')) return
     setLoading('cancel')
@@ -304,11 +326,21 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
           {participants.map((p: any) => (
             <div key={p.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2 text-sm">
               <span className={p.status === 'dropped' ? 'line-through text-muted' : ''}>
-                {p.profiles?.username}
+                {p.profiles?.first_name && p.profiles?.last_name
+                  ? `${p.profiles.first_name} ${p.profiles.last_name} (${p.profiles.username})`
+                  : p.profiles?.username}
               </span>
               <div className="flex items-center gap-3">
                 <span className="text-muted">{p.seed_elo} ELO</span>
                 <span className={`badge badge-${p.status === 'dropped' ? 'danger' : 'active'}`}>{p.status}</span>
+                {p.status !== 'dropped' && (
+                  <button
+                    onClick={() => handleRemovePlayer(p.user_id, p.profiles?.username)}
+                    className="text-xs text-danger hover:text-danger/80 transition-colors"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           ))}
