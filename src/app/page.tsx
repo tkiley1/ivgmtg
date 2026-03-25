@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { displayStatus, statusBadgeClass, formatDateTime, formatDate } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,7 @@ export default async function Home() {
             <Link key={t.id} href={`/tournaments/${t.id}`} className="card hover:border-accent transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <span className={`badge badge-${t.format}`}>{t.format}</span>
-                <span className={`badge badge-${t.status}`}>{t.status}</span>
+                <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
               </div>
               <h3 className="text-lg font-bold mb-1">{t.name}</h3>
               {t.description && (
@@ -57,9 +58,7 @@ export default async function Home() {
                 {t.top_cut && <span>Top {t.top_cut} cut</span>}
               </div>
               <div className="text-xs text-muted mt-1">
-                {t.scheduled_at
-                  ? new Date(t.scheduled_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                  : new Date(t.created_at).toLocaleDateString()}
+                {t.scheduled_at ? formatDateTime(t.scheduled_at) : formatDate(t.created_at)}
               </div>
             </Link>
           ))}

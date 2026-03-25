@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { displayStatus, statusBadgeClass } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,7 +30,7 @@ export default async function TournamentsPage() {
             <Link key={t.id} href={`/tournaments/${t.id}`} className="card hover:border-accent transition-colors">
               <div className="flex items-center justify-between mb-2">
                 <span className={`badge badge-${t.format}`}>{t.format}</span>
-                <span className={`badge badge-${t.status}`}>{t.status}</span>
+                <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
               </div>
               <h3 className="text-lg font-bold mb-1">{t.name}</h3>
               {t.description && <p className="text-sm text-muted mb-2 line-clamp-2">{t.description}</p>}

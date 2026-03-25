@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { displayStatus, statusBadgeClass } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +33,7 @@ export default async function ProfilePage({
   // Fetch tournament details for participations
   const tournamentIds = [...new Set((participations ?? []).map(p => p.tournament_id))]
   const { data: tournamentsData } = tournamentIds.length > 0
-    ? await supabase.from('tournaments').select('id, name, format, status, created_at').in('id', tournamentIds)
+    ? await supabase.from('tournaments').select('id, name, format, status, created_at').in('id', tournamentIds).neq('status', 'cancelled')
     : { data: [] as any[] }
   const tournamentsMap = new Map((tournamentsData ?? []).map((t: any) => [t.id, t]))
 
@@ -127,7 +128,7 @@ export default async function ProfilePage({
           <div className="text-muted text-center py-4">No tournaments yet.</div>
         ) : (
           <div className="space-y-2">
-            {participations.map((p: any) => {
+            {participations.filter((p: any) => tournamentsMap.has(p.tournament_id)).map((p: any) => {
               const t = tournamentsMap.get(p.tournament_id)
               return (
               <Link
@@ -146,7 +147,7 @@ export default async function ProfilePage({
                   {p.final_standing ? (
                     <div className="font-bold text-accent">#{p.final_standing}</div>
                   ) : (
-                    <span className={`badge badge-${p.status}`}>{p.status}</span>
+                    <span className={`badge ${statusBadgeClass(p.status)}`}>{displayStatus(p.status)}</span>
                   )}
                 </div>
               </Link>

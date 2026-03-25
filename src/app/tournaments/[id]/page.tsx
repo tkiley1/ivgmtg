@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { StandingsTable } from '@/components/StandingsTable'
 import { RoundTimer } from '@/components/RoundTimer'
 import Link from 'next/link'
+import { displayStatus, statusBadgeClass } from '@/lib/utils'
 
 function playerName(p: any) {
   if (!p) return 'Unknown'
@@ -126,7 +127,7 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-3xl font-bold">{tournament.name}</h1>
             <span className={`badge badge-${tournament.format}`}>{tournament.format}</span>
-            <span className={`badge badge-${tournament.status}`}>{tournament.status}</span>
+            <span className={`badge ${statusBadgeClass(tournament.status)}`}>{displayStatus(tournament.status)}</span>
           </div>
           {tournament.description && <p className="text-muted">{tournament.description}</p>}
           <div className="text-sm text-muted mt-2 flex gap-4">

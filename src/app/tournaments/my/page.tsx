@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { displayStatus, statusBadgeClass } from '@/lib/utils'
 
 export default function MyTournamentsPage() {
   const supabase = createClient()
@@ -30,6 +31,7 @@ export default function MyTournamentsPage() {
           .from('tournaments')
           .select('*')
           .in('id', partIds)
+          .neq('status', 'cancelled')
           .order('created_at', { ascending: false })
         const statusMap = new Map((parts ?? []).map(p => [p.tournament_id, p.status]))
         setParticipating((tList ?? []).map(t => ({ ...t, participant_status: statusMap.get(t.id) })))
@@ -47,6 +49,7 @@ export default function MyTournamentsPage() {
           .from('tournaments')
           .select('*')
           .in('id', adminIds)
+          .neq('status', 'cancelled')
           .order('created_at', { ascending: false })
         const roleMap = new Map((admins ?? []).map(a => [a.tournament_id, a.role]))
         setManaging((mList ?? []).map(t => ({ ...t, admin_role: roleMap.get(t.id) })))
@@ -93,7 +96,7 @@ export default function MyTournamentsPage() {
               <Link href={`/tournaments/${t.id}`} className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-1">
                   <span className={`badge badge-${t.format}`}>{t.format}</span>
-                  <span className={`badge badge-${t.status}`}>{t.status}</span>
+                  <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
                   {tab === 'playing' && t.participant_status === 'dropped' && (
                     <span className="badge bg-danger/20 text-danger">dropped</span>
                   )}
