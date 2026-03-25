@@ -8,7 +8,7 @@ export default async function LeaderboardPage() {
 
   const { data: players } = await supabase
     .from('profiles')
-    .select('username, elo_rating, total_wins, total_losses, total_draws')
+    .select('username, first_name, last_name, avatar_url, elo_rating, total_wins, total_losses, total_draws')
     .order('elo_rating', { ascending: false })
     .limit(100)
 
@@ -37,8 +37,20 @@ export default async function LeaderboardPage() {
                 <tr key={p.username} className="border-b border-border/50 hover:bg-card-hover">
                   <td className="py-3 px-4 font-mono text-muted">{i + 1}</td>
                   <td className="py-3 px-4">
-                    <Link href={`/profile/${p.username}`} className="text-accent hover:underline font-medium">
-                      {p.username}
+                    <Link href={`/profile/${p.username}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-accent overflow-hidden shrink-0">
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt={p.username} className="w-full h-full object-cover" />
+                        ) : (
+                          (p.first_name?.[0] ?? p.username[0]).toUpperCase()
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-accent font-medium">
+                          {p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username}
+                        </span>
+                        {p.first_name && <span className="text-muted text-xs ml-1.5">@{p.username}</span>}
+                      </div>
                     </Link>
                   </td>
                   <td className="py-3 px-4 text-right font-bold font-mono">{p.elo_rating}</td>
