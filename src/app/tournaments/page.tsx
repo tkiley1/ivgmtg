@@ -10,6 +10,7 @@ export default async function TournamentsPage() {
     .from('tournaments')
     .select('*')
     .eq('is_public', true)
+    .neq('status', 'cancelled')
     .order('created_at', { ascending: false })
     .limit(50) as { data: any[] | null }
 
