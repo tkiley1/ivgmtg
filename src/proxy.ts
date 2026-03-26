@@ -30,7 +30,7 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Redirect unauthenticated users from protected routes
-  const protectedPaths = ['/tournaments/create', '/profile']
+  const protectedPaths = ['/dashboard', '/tournaments', '/leaderboard', '/profile']
   const isProtected = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   )
