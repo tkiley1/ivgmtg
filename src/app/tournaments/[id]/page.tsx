@@ -22,6 +22,7 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
   const [pairings, setPairings] = useState<any[]>([])
   const [standings, setStandings] = useState<any[]>([])
   const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [commanderGames, setCommanderGames] = useState<any[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [isParticipant, setIsParticipant] = useState(false)
   const [joining, setJoining] = useState(false)
@@ -58,6 +59,16 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
       setStandings(s ?? [])
     }
 
+    // Load commander games
+    if (t && t.format === 'commander') {
+      const { data: cg } = await supabase
+        .from('commander_games')
+        .select('*, winner:profiles!commander_games_winner_id_fkey(username, first_name, last_name)')
+        .eq('tournament_id', id)
+        .order('game_number', { ascending: true })
+      setCommanderGames(cg ?? [])
+    }
+
     if (user) {
       const { data: admin } = await supabase
         .from('tournament_admins')
@@ -81,6 +92,7 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pairings', filter: `tournament_id=eq.${id}` }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds', filter: `tournament_id=eq.${id}` }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments', filter: `id=eq.${id}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'commander_games', filter: `tournament_id=eq.${id}` }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_participants', filter: `tournament_id=eq.${id}` }, () => load())
       .subscribe()
 
@@ -131,9 +143,9 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
           </div>
           {tournament.description && <p className="text-muted">{tournament.description}</p>}
           <div className="text-sm text-muted mt-2 flex gap-4">
-            <span>{tournament.rounds_count} rounds</span>
-            <span>Best of {tournament.games_per_round}</span>
-            <span>{tournament.round_time_limit_minutes} min/round</span>
+            {tournament.format !== 'commander' && <span>{tournament.rounds_count} rounds</span>}
+            <span>{tournament.format === 'commander' ? `${tournament.games_per_round} games` : `Best of ${tournament.games_per_round}`}</span>
+            {tournament.format !== 'commander' && <span>{tournament.round_time_limit_minutes} min/round</span>}
             {tournament.top_cut && <span>Top {tournament.top_cut} cut</span>}
             <span>{participants.filter((p: any) => p.status !== 'dropped').length} players</span>
           </div>
@@ -158,8 +170,74 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* Active Round */}
-      {activeRound && (
+      {/* Commander View */}
+      {tournament.format === 'commander' && tournament.status !== 'pending' && (
+        <div className="card mb-8">
+          <h2 className="text-xl font-bold mb-4">
+            Games ({commanderGames.length} / {tournament.games_per_round})
+          </h2>
+
+          {/* Commander Leaderboard */}
+          {(() => {
+            const activeParts = participants.filter((p: any) => p.status !== 'dropped')
+            const winCounts = new Map<string, number>()
+            activeParts.forEach((p: any) => winCounts.set(p.user_id, 0))
+            commanderGames.forEach((g: any) => {
+              if (g.winner_id) winCounts.set(g.winner_id, (winCounts.get(g.winner_id) ?? 0) + 1)
+            })
+            const sorted = activeParts
+              .map((p: any) => ({ ...p, wins: winCounts.get(p.user_id) ?? 0 }))
+              .sort((a: any, b: any) => b.wins - a.wins)
+
+            return (
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Standings</h3>
+                <div className="space-y-1">
+                  {sorted.map((p: any, i: number) => (
+                    <div key={p.user_id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-muted font-mono w-6">{i + 1}</span>
+                        <Link href={`/profile/${p.profiles?.username}`} className="text-accent hover:underline">
+                          {p.profiles?.first_name && p.profiles?.last_name
+                            ? `${p.profiles.first_name} ${p.profiles.last_name}`
+                            : p.profiles?.username}
+                        </Link>
+                      </div>
+                      <span className="font-bold font-mono">{p.wins} {p.wins === 1 ? 'win' : 'wins'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Game Log */}
+          {commanderGames.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Game Log</h3>
+              <div className="space-y-1">
+                {commanderGames.map((g: any) => (
+                  <div key={g.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2 text-sm">
+                    <span className="text-muted">Game {g.game_number}</span>
+                    <span className="text-success font-bold">
+                      {g.winner ? playerName(g.winner) : 'No winner recorded'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tournament.status === 'completed' && (
+            <div className="bg-success/10 border border-success/30 text-success rounded-lg p-3 text-center mt-4">
+              Tournament completed!
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Active Round (non-commander) */}
+      {tournament.format !== 'commander' && activeRound && (
         <div className="card mb-8">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">
@@ -217,8 +295,8 @@ export default function TournamentPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {/* Standings */}
-      {standings.length > 0 && (
+      {/* Standings (non-commander) */}
+      {tournament.format !== 'commander' && standings.length > 0 && (
         <div className="card mb-8">
           <h2 className="text-xl font-bold mb-4">Standings</h2>
           <StandingsTable standings={standings} />

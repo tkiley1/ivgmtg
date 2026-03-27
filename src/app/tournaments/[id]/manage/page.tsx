@@ -21,6 +21,8 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
   const [editTime, setEditTime] = useState(50)
   const [editTopCut, setEditTopCut] = useState<number | null>(null)
   const [editPublic, setEditPublic] = useState(false)
+  const [commanderGames, setCommanderGames] = useState<any[]>([])
+  const [selectedWinner, setSelectedWinner] = useState('')
 
   const load = async () => {
     const { data: t } = await supabase.from('tournaments').select('*').eq('id', id).single()
@@ -41,6 +43,16 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
       .select('*, profiles(username, elo_rating)')
       .eq('tournament_id', id)
     setParticipants(parts ?? [])
+
+    // Load commander games
+    if (t && t.format === 'commander') {
+      const { data: cg } = await supabase
+        .from('commander_games')
+        .select('*, winner:profiles!commander_games_winner_id_fkey(username, first_name, last_name)')
+        .eq('tournament_id', id)
+        .order('game_number', { ascending: true })
+      setCommanderGames(cg ?? [])
+    }
 
     const { data: pairs } = await supabase
       .from('pairings')
@@ -91,6 +103,36 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
     })
     if (err) setError(err.message)
     else load()
+  }
+
+  const handleRecordCommanderWin = async () => {
+    if (!selectedWinner) return
+    setError('')
+    setSuccess('')
+
+    const nextGameNumber = commanderGames.length + 1
+    const { error: err } = await supabase
+      .from('commander_games')
+      .insert({
+        tournament_id: id,
+        game_number: nextGameNumber,
+        winner_id: selectedWinner,
+      })
+
+    if (err) {
+      setError(err.message)
+    } else {
+      setSelectedWinner('')
+      setSuccess(`Game ${nextGameNumber} winner recorded!`)
+      load()
+    }
+  }
+
+  const handleUndoLastGame = async () => {
+    if (commanderGames.length === 0) return
+    const lastGame = commanderGames[commanderGames.length - 1]
+    await supabase.from('commander_games').delete().eq('id', lastGame.id)
+    load()
   }
 
   const handleRemovePlayer = async (userId: string, username: string) => {
@@ -224,10 +266,69 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
 
         <div className="mt-4 text-sm text-muted">
           Status: <span className="font-bold text-foreground">{tournament.status}</span> |
-          Round: <span className="font-bold text-foreground">{tournament.current_round}/{tournament.rounds_count}</span> |
+          {tournament.format !== 'commander' && <>Round: <span className="font-bold text-foreground">{tournament.current_round}/{tournament.rounds_count}</span> |</>}
+          {tournament.format === 'commander' && <>Games: <span className="font-bold text-foreground">{commanderGames.length}/{tournament.games_per_round}</span> |</>}
           Players: <span className="font-bold text-foreground">{participants.filter(p => p.status !== 'dropped').length}</span>
         </div>
       </div>
+
+      {/* Commander: Record Game Winners */}
+      {tournament.format === 'commander' && tournament.status === 'round_active' && (
+        <div className="card mb-8">
+          <h2 className="text-xl font-bold mb-4">Record Game Winner</h2>
+          <p className="text-sm text-muted mb-4">
+            Game {commanderGames.length + 1} of {tournament.games_per_round}
+          </p>
+          <div className="flex gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-sm text-muted mb-1">Winner</label>
+              <select value={selectedWinner} onChange={e => setSelectedWinner(e.target.value)} className="input">
+                <option value="">Select winner...</option>
+                {participants.filter(p => p.status !== 'dropped').map((p: any) => (
+                  <option key={p.user_id} value={p.user_id}>
+                    {p.profiles?.first_name && p.profiles?.last_name
+                      ? `${p.profiles.first_name} ${p.profiles.last_name} (${p.profiles.username})`
+                      : p.profiles?.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button onClick={handleRecordCommanderWin} disabled={!selectedWinner} className="btn-primary">
+              Record Win
+            </button>
+            {commanderGames.length > 0 && (
+              <button onClick={handleUndoLastGame} className="btn-secondary">
+                Undo Last
+              </button>
+            )}
+          </div>
+
+          {/* Game history */}
+          {commanderGames.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Game History</h3>
+              <div className="space-y-1">
+                {commanderGames.map((g: any) => (
+                  <div key={g.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2 text-sm">
+                    <span className="text-muted">Game {g.game_number}</span>
+                    <span className="text-success font-bold">
+                      {g.winner?.first_name && g.winner?.last_name
+                        ? `${g.winner.first_name} ${g.winner.last_name}`
+                        : g.winner?.username ?? 'Unknown'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {commanderGames.length >= tournament.games_per_round && (
+            <div className="bg-accent/10 border border-accent/30 text-accent rounded-lg p-3 text-center mt-4">
+              All {tournament.games_per_round} games recorded. You can end the tournament.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Edit Settings (only when pending) */}
       {tournament.status === 'pending' && (
@@ -281,8 +382,8 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
         </div>
       )}
 
-      {/* Active Matches (for override) */}
-      {activePairings.length > 0 && (
+      {/* Active Matches (for override) - non-commander only */}
+      {tournament.format !== 'commander' && activePairings.length > 0 && (
         <div className="card mb-8">
           <h2 className="text-xl font-bold mb-4">Active Matches ({activePairings.length})</h2>
           <div className="space-y-3">

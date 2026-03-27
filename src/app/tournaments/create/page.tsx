@@ -19,6 +19,19 @@ export default function CreateTournamentPage() {
   const [error, setError] = useState('')
   const router = useRouter()
 
+  const isCommander = format === 'commander'
+
+  const handleFormatChange = (newFormat: string) => {
+    setFormat(newFormat)
+    if (newFormat === 'commander') {
+      setRoundsCount(1)
+      setTopCut(null)
+      setTimeLimit(50)
+    } else {
+      if (roundsCount === 1) setRoundsCount(4)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -29,10 +42,10 @@ export default function CreateTournamentPage() {
       p_name: name,
       p_description: description || undefined,
       p_format: format,
-      p_rounds_count: roundsCount,
+      p_rounds_count: isCommander ? 1 : roundsCount,
       p_games_per_round: gamesPerRound,
-      p_round_time_limit: timeLimit,
-      p_top_cut: topCut ?? undefined,
+      p_round_time_limit: isCommander ? 999 : timeLimit,
+      p_top_cut: isCommander ? undefined : (topCut ?? undefined),
       p_is_public: isPublic,
     })
 
@@ -40,7 +53,6 @@ export default function CreateTournamentPage() {
       setError(err.message)
       setLoading(false)
     } else {
-      // Set scheduled_at if provided
       if (scheduledDate && data) {
         const dt = scheduledTime
           ? new Date(`${scheduledDate}T${scheduledTime}`)
@@ -76,7 +88,7 @@ export default function CreateTournamentPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm text-muted mb-1">Format</label>
-            <select value={format} onChange={(e) => setFormat(e.target.value)} className="input">
+            <select value={format} onChange={(e) => handleFormatChange(e.target.value)} className="input">
               <option value="commander">Commander</option>
               <option value="draft">Draft</option>
               <option value="sealed">Sealed</option>
@@ -84,33 +96,45 @@ export default function CreateTournamentPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-muted mb-1">Number of Rounds</label>
-            <input type="number" value={roundsCount} onChange={(e) => setRoundsCount(Number(e.target.value))} className="input" min={1} max={20} required />
-          </div>
-
-          <div>
             <label className="block text-sm text-muted mb-1">Best of</label>
             <input type="number" value={gamesPerRound} onChange={(e) => setGamesPerRound(Number(e.target.value))} className="input" min={1} max={7} step={2} required />
           </div>
 
-          <div>
-            <label className="block text-sm text-muted mb-1">Time Limit (minutes)</label>
-            <input type="number" value={timeLimit} onChange={(e) => setTimeLimit(Number(e.target.value))} className="input" min={10} max={180} required />
-          </div>
+          {!isCommander && (
+            <>
+              <div>
+                <label className="block text-sm text-muted mb-1">Number of Rounds</label>
+                <input type="number" value={roundsCount} onChange={(e) => setRoundsCount(Number(e.target.value))} className="input" min={1} max={20} required />
+              </div>
+
+              <div>
+                <label className="block text-sm text-muted mb-1">Time Limit (minutes)</label>
+                <input type="number" value={timeLimit} onChange={(e) => setTimeLimit(Number(e.target.value))} className="input" min={10} max={180} required />
+              </div>
+            </>
+          )}
         </div>
 
-        <div>
-          <label className="block text-sm text-muted mb-1">Top Cut (leave empty for none)</label>
-          <input
-            type="number"
-            value={topCut ?? ''}
-            onChange={(e) => setTopCut(e.target.value ? Number(e.target.value) : null)}
-            className="input"
-            min={2}
-            max={64}
-            placeholder="e.g., 8"
-          />
-        </div>
+        {isCommander && (
+          <p className="text-sm text-muted -mt-2">
+            Commander tournaments are single-round with random pairings.
+          </p>
+        )}
+
+        {!isCommander && (
+          <div>
+            <label className="block text-sm text-muted mb-1">Top Cut (leave empty for none)</label>
+            <input
+              type="number"
+              value={topCut ?? ''}
+              onChange={(e) => setTopCut(e.target.value ? Number(e.target.value) : null)}
+              className="input"
+              min={2}
+              max={64}
+              placeholder="e.g., 8"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
