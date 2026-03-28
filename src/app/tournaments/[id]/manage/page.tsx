@@ -63,6 +63,24 @@ export default function ManageTournamentPage({ params }: { params: Promise<{ id:
 
   useEffect(() => { load() }, [id])
 
+  // Poll for updates during active rounds
+  useEffect(() => {
+    if (tournament?.status !== 'round_active') return
+    const interval = setInterval(load, 5000)
+    return () => clearInterval(interval)
+  }, [tournament?.status])
+
+  // Auto-start next round when all matches complete and more rounds remain
+  useEffect(() => {
+    if (
+      tournament?.status === 'between_rounds' &&
+      tournament.current_round < tournament.rounds_count &&
+      !loading
+    ) {
+      callAction('start_next_round')
+    }
+  }, [tournament?.status, tournament?.current_round])
+
   const callAction = async (action: string) => {
     setLoading(action)
     setError('')
