@@ -1,53 +1,20 @@
-'use client'
-
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import type { User } from '@supabase/supabase-js'
+import { getCurrentUser } from '@/lib/auth/session'
+import { signOutAction } from '@/app/auth/actions'
 
-export function Navbar() {
-  const [user, setUser] = useState<User | null>(null)
-  const [username, setUsername] = useState<string | null>(null)
-  const supabase = createClient()
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      if (user) {
-        supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => setUsername(data?.username ?? null))
-      }
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/'
-  }
-
-  // Don't render navbar on landing page for non-auth users
-  if (!user) return null
+export async function Navbar() {
+  const user = await getCurrentUser()
 
   return (
     <nav className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14 items-center">
           <div className="flex items-center gap-6">
-            <Link href="/dashboard" className="text-xl font-bold text-accent">
-              IVGMTG
+            <Link href={user ? '/dashboard' : '/'} className="text-xl font-bold text-accent">
+              InvadersMTG
             </Link>
+            {user ? (
+              <>
             <Link
               href="/leaderboard"
               className="text-sm text-muted hover:text-foreground transition-colors"
@@ -72,13 +39,20 @@ export function Navbar() {
             >
               Create
             </Link>
+              </>
+            ) : (
+              <Link href="/tournaments" className="text-sm text-muted hover:text-foreground transition-colors">
+                Browse events
+              </Link>
+            )}
           </div>
-          <div className="flex items-center gap-4">
+          {user ? (
+            <div className="flex items-center gap-4">
             <Link
-              href={`/profile/${username ?? ''}`}
+              href={`/profile/${user.username}`}
               className="text-sm text-muted hover:text-foreground transition-colors"
             >
-              {username ?? 'Profile'}
+              {user.username}
             </Link>
             <Link
               href="/profile/settings"
@@ -86,10 +60,16 @@ export function Navbar() {
             >
               Settings
             </Link>
-            <button onClick={handleSignOut} className="btn-secondary text-sm">
-              Sign Out
-            </button>
+            <form action={signOutAction}>
+              <button type="submit" className="btn-secondary text-sm">Sign Out</button>
+            </form>
           </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Link href="/auth/login" className="text-sm text-muted hover:text-foreground">Sign in</Link>
+              <Link href="/auth/register" className="btn-primary text-sm">Start an event</Link>
+            </div>
+          )}
         </div>
       </div>
     </nav>

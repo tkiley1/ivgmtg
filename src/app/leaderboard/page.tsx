@@ -1,73 +1,20 @@
-import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { desc, eq } from 'drizzle-orm'
+import { getDb } from '@/lib/db'
+import { playerRatings, profiles } from '@/lib/db/schema'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LeaderboardPage() {
-  const supabase = await createClient()
+  const players = await getDb().select({
+    username: profiles.username,
+    displayName: profiles.displayName,
+    format: playerRatings.format,
+    rating: playerRatings.rating,
+    wins: playerRatings.wins,
+    losses: playerRatings.losses,
+    draws: playerRatings.draws,
+  }).from(playerRatings).innerJoin(profiles, eq(playerRatings.userId, profiles.userId)).orderBy(desc(playerRatings.rating)).limit(100)
 
-  const { data: players } = await supabase
-    .from('profiles')
-    .select('username, first_name, last_name, avatar_url, elo_rating, total_wins, total_losses, total_draws')
-    .order('elo_rating', { ascending: false })
-    .limit(100)
-
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Leaderboard</h1>
-
-      <div className="card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-muted text-left">
-              <th className="py-3 px-4 w-16">#</th>
-              <th className="py-3 px-4">Player</th>
-              <th className="py-3 px-4 text-right">ELO</th>
-              <th className="py-3 px-4 text-right">W</th>
-              <th className="py-3 px-4 text-right">L</th>
-              <th className="py-3 px-4 text-right">D</th>
-              <th className="py-3 px-4 text-right">Win%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(players ?? []).map((p, i) => {
-              const total = p.total_wins + p.total_losses + p.total_draws
-              const winPct = total > 0 ? ((p.total_wins / total) * 100).toFixed(1) : '—'
-              return (
-                <tr key={p.username} className="border-b border-border/50 hover:bg-card-hover">
-                  <td className="py-3 px-4 font-mono text-muted">{i + 1}</td>
-                  <td className="py-3 px-4">
-                    <Link href={`/profile/${p.username}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-accent overflow-hidden shrink-0">
-                        {p.avatar_url ? (
-                          <img src={p.avatar_url} alt={p.username} className="w-full h-full object-cover" />
-                        ) : (
-                          (p.first_name?.[0] ?? p.username[0]).toUpperCase()
-                        )}
-                      </div>
-                      <div>
-                        <span className="text-accent font-medium">
-                          {p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username}
-                        </span>
-                        {p.first_name && <span className="text-muted text-xs ml-1.5">@{p.username}</span>}
-                      </div>
-                    </Link>
-                  </td>
-                  <td className="py-3 px-4 text-right font-bold font-mono">{p.elo_rating}</td>
-                  <td className="py-3 px-4 text-right font-mono text-success">{p.total_wins}</td>
-                  <td className="py-3 px-4 text-right font-mono text-danger">{p.total_losses}</td>
-                  <td className="py-3 px-4 text-right font-mono text-warning">{p.total_draws}</td>
-                  <td className="py-3 px-4 text-right font-mono">{winPct}{winPct !== '—' && '%'}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-
-        {(!players || players.length === 0) && (
-          <div className="text-center py-12 text-muted">No players yet. Register to be the first!</div>
-        )}
-      </div>
-    </div>
-  )
+  return <div className="max-w-4xl mx-auto px-4 py-8"><div className="mb-8"><p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Leaderboard</p><h1 className="text-3xl font-bold mt-2">Earn your seat at the top.</h1><p className="text-muted mt-2">Ratings are tracked separately for each tournament format.</p></div><div className="card overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-border text-muted text-left"><th className="py-3 pr-4">#</th><th className="py-3 pr-4">Player</th><th className="py-3 pr-4">Format</th><th className="py-3 text-right">Rating</th><th className="py-3 text-right">Record</th></tr></thead><tbody>{players.map((player, index) => <tr key={`${player.username}-${player.format}`} className="border-b border-border/50"><td className="py-3 pr-4 font-mono text-muted">{index + 1}</td><td className="py-3 pr-4"><Link href={`/profile/${player.username}`} className="hover:text-accent">{player.displayName} <span className="text-muted">@{player.username}</span></Link></td><td className="py-3 pr-4 capitalize">{player.format}</td><td className="py-3 text-right font-mono font-bold">{player.rating}</td><td className="py-3 text-right font-mono">{player.wins}-{player.losses}-{player.draws}</td></tr>)}</tbody></table>{players.length === 0 && <p className="text-center text-muted py-12">Results will populate the leaderboard after the first completed event.</p>}</div></div>
 }

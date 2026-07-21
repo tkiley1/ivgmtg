@@ -1,60 +1,55 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { displayStatus, statusBadgeClass, formatDateTime, formatDate } from '@/lib/utils'
+import { requireCurrentUser } from '@/lib/auth/session'
+import { listPublicTournaments } from '@/lib/tournaments/queries'
+import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-
-  const { data: tournaments } = await supabase
-    .from('tournaments')
-    .select('*')
-    .eq('is_public', true)
-    .neq('status', 'cancelled')
-    .order('created_at', { ascending: false })
-    .limit(20) as { data: any[] | null }
+  const user = await requireCurrentUser()
+  const tournaments = await listPublicTournaments(12)
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <div className="flex gap-3">
-          <Link href="/tournaments/create" className="btn-primary">Create Tournament</Link>
-          <Link href="/tournaments/join" className="btn-secondary">Join Tournament</Link>
+      <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-5 mb-10">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Welcome back, {user.username}</p>
+          <h1 className="text-3xl sm:text-4xl font-bold mt-2">Your table is ready.</h1>
+          <p className="text-muted mt-2">Create an event, find a seat, or pick up where the last round left off.</p>
         </div>
-      </div>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/tournaments/create" className="btn-primary">Create an event</Link>
+          <Link href="/tournaments/join" className="btn-secondary">Join with key</Link>
+        </div>
+      </section>
 
-      <h2 className="text-xl font-bold mb-4">Public Tournaments</h2>
-
-      {(!tournaments || tournaments.length === 0) ? (
-        <div className="card text-center py-12 text-muted">
-          No public tournaments yet. Be the first to create one!
+      <section>
+        <div className="flex items-baseline justify-between mb-4">
+          <h2 className="text-xl font-bold">Events to join</h2>
+          <Link href="/tournaments" className="text-sm text-accent hover:underline">Browse all</Link>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tournaments.map((t) => (
-            <Link key={t.id} href={`/tournaments/${t.id}`} className="card hover:border-accent transition-colors">
-              <div className="flex items-center justify-between mb-2">
-                <span className={`badge badge-${t.format}`}>{t.format}</span>
-                <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
-              </div>
-              <h3 className="text-lg font-bold mb-1">{t.name}</h3>
-              {t.description && (
-                <p className="text-sm text-muted mb-2 line-clamp-2">{t.description}</p>
-              )}
-              <div className="text-xs text-muted flex gap-4 mt-3">
-                <span>{t.rounds_count} rounds</span>
-                <span>Best of {t.games_per_round}</span>
-                {t.top_cut && <span>Top {t.top_cut} cut</span>}
-              </div>
-              <div className="text-xs text-muted mt-1">
-                {t.scheduled_at ? formatDateTime(t.scheduled_at) : formatDate(t.created_at)}
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+        {tournaments.length === 0 ? (
+          <div className="card text-center py-14"><p className="font-medium">No public events yet.</p><p className="text-sm text-muted mt-2">Be the organizer who starts the next one.</p></div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {tournaments.map((event) => (
+              <Link key={event.id} href={`/tournaments/${event.id}`} className="card group hover:-translate-y-0.5 transition-transform">
+                <div className="flex justify-between gap-3 mb-4">
+                  <span className={`badge badge-${event.format}`}>{event.format === 'commander' && event.commanderMode === 'pods' ? 'Commander pods' : event.format}</span>
+                  <span className={`badge ${statusBadgeClass(event.status)}`}>{displayStatus(event.status)}</span>
+                </div>
+                <h3 className="font-bold text-lg group-hover:text-accent transition-colors">{event.name}</h3>
+                <p className="text-sm text-muted mt-2 line-clamp-2 min-h-10">{event.description || 'Tournament details coming from the organizer.'}</p>
+                <div className="pt-4 mt-4 border-t border-border text-xs text-muted flex flex-wrap gap-x-4 gap-y-1">
+                  <span>{event.roundCount} rounds</span>
+                  <span>{event.format === 'commander' && event.commanderMode === 'pods' ? `${event.podSize}-player pods` : `Best of ${event.gamesPerMatch}`}</span>
+                  {event.scheduledAt && <span>{formatDateTime(event.scheduledAt)}</span>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

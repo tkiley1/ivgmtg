@@ -1,12 +1,11 @@
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LandingPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getCurrentUser()
 
   if (user) redirect('/dashboard')
 
@@ -24,15 +23,15 @@ export default async function LandingPage() {
       <section className="relative z-10 flex flex-col items-center justify-center min-h-[85vh] px-4 text-center">
         <div className="landing-badge">Tournament Platform</div>
         <h1 className="landing-title">
-          <span className="landing-title-accent">IVG</span>MTG
+          <span className="landing-title-accent">Invaders</span>MTG
         </h1>
         <p className="landing-subtitle">
-          Organize and compete in Magic: The Gathering tournaments.<br className="hidden sm:block" />
-          Swiss pairings. ELO rankings. Live standings. All in one place.
+          Run tabletop Magic events without spreadsheets, Discord chaos, or manual standings.<br className="hidden sm:block" />
+          Pair, play, report, and keep the room moving.
         </p>
         <div className="flex gap-4 mt-10">
           <Link href="/auth/register" className="landing-cta-primary">
-            Create Account
+            Create an event
           </Link>
           <Link href="/auth/login" className="landing-cta-secondary">
             Sign In
@@ -53,7 +52,7 @@ export default async function LandingPage() {
           Everything you need
         </h2>
         <p className="text-center text-3xl sm:text-4xl font-bold mb-16 max-w-2xl mx-auto leading-tight">
-          Run tournaments like a <span className="text-accent">planeswalker</span>
+          Run a better <span className="text-accent">game night</span>
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -65,7 +64,7 @@ export default async function LandingPage() {
                 </svg>
               ),
               title: 'Swiss Pairings',
-              desc: 'Automatic Swiss-system pairings with rematch avoidance, bye handling, and score-group matching.',
+              desc: 'Swiss rounds with rematch avoidance, byes, and score-group matching—without a spreadsheet.',
             },
             {
               icon: (
@@ -74,7 +73,7 @@ export default async function LandingPage() {
                 </svg>
               ),
               title: 'ELO Ratings',
-              desc: 'Track your skill with a persistent ELO rating. Gain points from wins, lose them from defeats.',
+              desc: 'Format-specific ratings make a leaderboard useful without mixing fundamentally different events.',
             },
             {
               icon: (
@@ -83,7 +82,7 @@ export default async function LandingPage() {
                 </svg>
               ),
               title: 'Live Standings',
-              desc: 'Full MTG tiebreakers: match points, OMW%, GW%, OGW%. Updated in real time.',
+              desc: 'Players see pairings, results, and standings from a focused tournament workspace.',
             },
             {
               icon: (
@@ -92,7 +91,7 @@ export default async function LandingPage() {
                 </svg>
               ),
               title: 'Round Timer',
-              desc: 'Live countdown for each round. Players and judges always know how much time remains.',
+              desc: 'A shared clock and clear round state help every table stay in sync.',
             },
             {
               icon: (
@@ -110,7 +109,7 @@ export default async function LandingPage() {
                 </svg>
               ),
               title: 'Top Cut Brackets',
-              desc: 'Optional single-elimination top cut after Swiss rounds. Seeded by final standings.',
+              desc: 'Optional single-elimination top cut for duel events, seeded from final Swiss standings.',
             },
           ].map((f) => (
             <div key={f.title} className="feature-card">
@@ -124,14 +123,15 @@ export default async function LandingPage() {
 
       {/* Formats */}
       <section className="relative z-10 max-w-4xl mx-auto px-4 py-24">
-        <h2 className="text-center text-3xl sm:text-4xl font-bold mb-16">
-          All major formats
+          <h2 className="text-center text-3xl sm:text-4xl font-bold mb-16">
+          Built for the tables you run
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
           {[
-            { name: 'Commander', color: '#c084fc', bg: '#7c3aed22', desc: 'Multiplayer or 1v1 commander pods' },
+            { name: 'Commander', color: '#c084fc', bg: '#7c3aed22', desc: '1v1 and true 3–4 player pods' },
             { name: 'Draft', color: '#93c5fd', bg: '#3b82f622', desc: 'Booster draft with Swiss rounds' },
             { name: 'Sealed', color: '#fbbf24', bg: '#f59e0b22', desc: 'Sealed deck tournament play' },
+            { name: 'Standard', color: '#86efac', bg: '#22c55e22', desc: 'Constructed play with Arena deck registration' },
           ].map((fmt) => (
             <div key={fmt.name} className="card py-8" style={{ borderColor: `${fmt.color}33` }}>
               <div
@@ -150,19 +150,19 @@ export default async function LandingPage() {
       {/* CTA */}
       <section className="relative z-10 text-center py-24 px-4">
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to compete?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to run the room?</h2>
           <p className="text-muted text-lg mb-8">
-            Create your account and join your first tournament in under a minute.
+            Create an account, publish an event, and give every player a clearer night of Magic.
           </p>
           <Link href="/auth/register" className="landing-cta-primary text-lg px-8 py-3">
-            Get Started
+            Start an event
           </Link>
         </div>
       </section>
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border/50 py-8 text-center text-sm text-muted/60">
-        IVGMTG &middot; Magic: The Gathering Tournament Platform
+        InvadersMTG &middot; Independent tabletop tournament platform
       </footer>
     </div>
   )

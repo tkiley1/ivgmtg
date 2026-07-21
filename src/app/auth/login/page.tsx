@@ -1,41 +1,23 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useActionState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { loginAction, type AuthActionState } from '../actions'
+
+const initialState: AuthActionState = {}
 
 function LoginForm() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const router = useRouter()
+  const [state, formAction, pending] = useActionState(loginAction, initialState)
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/'
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
-      router.push(redirect)
-      router.refresh()
-    }
-  }
-
   return (
-    <form onSubmit={handleLogin} className="space-y-4">
-      {error && (
+    <form action={formAction} className="space-y-4">
+      <input type="hidden" name="redirectTo" value={redirect} />
+      {state.error && (
         <div className="bg-danger/10 border border-danger/30 text-danger rounded-lg p-3 text-sm">
-          {error}
+          {state.error}
         </div>
       )}
 
@@ -43,8 +25,7 @@ function LoginForm() {
         <label className="block text-sm text-muted mb-1">Email</label>
         <input
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          name="email"
           className="input"
           required
         />
@@ -54,15 +35,14 @@ function LoginForm() {
         <label className="block text-sm text-muted mb-1">Password</label>
         <input
           type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          name="password"
           className="input"
           required
         />
       </div>
 
-      <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
-        {loading ? 'Signing in...' : 'Sign In'}
+      <button type="submit" disabled={pending} className="btn-primary w-full justify-center">
+        {pending ? 'Signing in...' : 'Sign In'}
       </button>
     </form>
   )

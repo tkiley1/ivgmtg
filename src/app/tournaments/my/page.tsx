@@ -1,128 +1,56 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { requireCurrentUser } from '@/lib/auth/session'
+import { listUserTournaments } from '@/lib/tournaments/queries'
 import { displayStatus, statusBadgeClass } from '@/lib/utils'
 
-export default function MyTournamentsPage() {
-  const supabase = createClient()
-  const router = useRouter()
-  const [participating, setParticipating] = useState<any[]>([])
-  const [managing, setManaging] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'playing' | 'managing'>('playing')
+export const dynamic = 'force-dynamic'
 
-  useEffect(() => {
-    const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/auth/login'); return }
-
-      const { data: parts } = await supabase
-        .from('tournament_participants')
-        .select('tournament_id, status')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      const partIds = (parts ?? []).map(p => p.tournament_id)
-      if (partIds.length > 0) {
-        const { data: tList } = await supabase
-          .from('tournaments')
-          .select('*')
-          .in('id', partIds)
-          .neq('status', 'cancelled')
-          .order('created_at', { ascending: false })
-        const statusMap = new Map((parts ?? []).map(p => [p.tournament_id, p.status]))
-        setParticipating((tList ?? []).map(t => ({ ...t, participant_status: statusMap.get(t.id) })))
-      }
-
-      const { data: admins } = await supabase
-        .from('tournament_admins')
-        .select('tournament_id, role')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      const adminIds = (admins ?? []).map(a => a.tournament_id)
-      if (adminIds.length > 0) {
-        const { data: mList } = await supabase
-          .from('tournaments')
-          .select('*')
-          .in('id', adminIds)
-          .neq('status', 'cancelled')
-          .order('created_at', { ascending: false })
-        const roleMap = new Map((admins ?? []).map(a => [a.tournament_id, a.role]))
-        setManaging((mList ?? []).map(t => ({ ...t, admin_role: roleMap.get(t.id) })))
-      }
-
-      setLoading(false)
-    }
-    load()
-  }, [])
-
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-muted">Loading...</div>
-
-  const list = tab === 'playing' ? participating : managing
+export default async function MyTournamentsPage() {
+  const user = await requireCurrentUser()
+  const { playing, organizing } = await listUserTournaments(user.id)
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">My Tournaments</h1>
-
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setTab('playing')}
-          className={tab === 'playing' ? 'btn-primary' : 'btn-secondary'}
-        >
-          Playing ({participating.length})
-        </button>
-        <button
-          onClick={() => setTab('managing')}
-          className={tab === 'managing' ? 'btn-primary' : 'btn-secondary'}
-        >
-          Managing ({managing.length})
-        </button>
+    <div className="max-w-5xl mx-auto px-4 py-8 space-y-10">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Player profile</p>
+        <h1 className="text-3xl font-bold mt-2">Your events</h1>
       </div>
+      <EventSection title="Playing" empty="You have not joined an event yet." events={playing.map((entry) => ({ ...entry.tournament, detail: entry.participantStatus }))} />
+      <EventSection title="Organizing" empty="You are not organizing any events yet." events={organizing.map((entry) => ({ ...entry.tournament, detail: entry.role }))} organizer />
+    </div>
+  )
+}
 
-      {list.length === 0 ? (
-        <div className="card text-center py-12 text-muted">
-          {tab === 'playing'
-            ? "You haven't joined any tournaments yet."
-            : "You aren't managing any tournaments."}
-        </div>
+function EventSection({
+  title,
+  empty,
+  events,
+  organizer = false,
+}: {
+  title: string
+  empty: string
+  events: Array<{ id: string; name: string; format: string; status: string; roundCount: number; detail: string }>
+  organizer?: boolean
+}) {
+  return (
+    <section>
+      <h2 className="text-xl font-bold mb-4">{title}</h2>
+      {events.length === 0 ? (
+        <div className="card text-muted text-center py-9">{empty}</div>
       ) : (
         <div className="space-y-3">
-          {list.map((t) => (
-            <div key={t.id} className="card flex items-center justify-between">
-              <Link href={`/tournaments/${t.id}`} className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1">
-                  <span className={`badge badge-${t.format}`}>{t.format}</span>
-                  <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
-                  {tab === 'playing' && t.participant_status === 'dropped' && (
-                    <span className="badge bg-danger/20 text-danger">dropped</span>
-                  )}
-                  {tab === 'managing' && (
-                    <span className="badge bg-accent/20 text-accent">{t.admin_role}</span>
-                  )}
-                </div>
-                <h3 className="text-lg font-bold truncate">{t.name}</h3>
-                <div className="text-xs text-muted flex gap-4 mt-1">
-                  <span>{t.rounds_count} rounds</span>
-                  <span>Best of {t.games_per_round}</span>
-                  <span>Round {t.current_round}/{t.rounds_count}</span>
-                  {t.access_key && tab === 'managing' && (
-                    <span>Key: <span className="font-mono text-accent">{t.access_key}</span></span>
-                  )}
-                </div>
+          {events.map((event) => (
+            <div key={event.id} className="card flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+              <Link href={`/tournaments/${event.id}`} className="min-w-0">
+                <div className="flex flex-wrap gap-2 mb-2"><span className={`badge badge-${event.format}`}>{event.format}</span><span className={`badge ${statusBadgeClass(event.status)}`}>{displayStatus(event.status)}</span></div>
+                <h3 className="font-bold text-lg truncate">{event.name}</h3>
+                <p className="text-sm text-muted mt-1">{event.roundCount} rounds · {event.detail}</p>
               </Link>
-              {tab === 'managing' && (
-                <Link href={`/tournaments/${t.id}/manage`} className="btn-secondary text-sm ml-4 shrink-0">
-                  Manage
-                </Link>
-              )}
+              {organizer && <Link href={`/tournaments/${event.id}/manage`} className="btn-secondary shrink-0">Manage</Link>}
             </div>
           ))}
         </div>
       )}
-    </div>
+    </section>
   )
 }

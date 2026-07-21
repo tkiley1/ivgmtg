@@ -1,46 +1,40 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
-import { displayStatus, statusBadgeClass } from '@/lib/utils'
+import { getCurrentUser } from '@/lib/auth/session'
+import { listPublicTournaments } from '@/lib/tournaments/queries'
+import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
 export default async function TournamentsPage() {
-  const supabase = await createClient()
-
-  const { data: tournaments } = await supabase
-    .from('tournaments')
-    .select('*')
-    .eq('is_public', true)
-    .neq('status', 'cancelled')
-    .order('created_at', { ascending: false })
-    .limit(50) as { data: any[] | null }
+  const [user, tournaments] = await Promise.all([getCurrentUser(), listPublicTournaments()])
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Browse Tournaments</h1>
-        <Link href="/tournaments/create" className="btn-primary">Create Tournament</Link>
+      <div className="flex flex-col sm:flex-row gap-4 sm:items-end justify-between mb-9">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Event directory</p>
+          <h1 className="text-3xl sm:text-4xl font-bold mt-2">Find your next table.</h1>
+          <p className="text-muted mt-2">Public Magic events, from draft night to multiplayer Commander pods.</p>
+        </div>
+        <Link href={user ? '/tournaments/create' : '/auth/register'} className="btn-primary">Create an event</Link>
       </div>
 
-      {(!tournaments || tournaments.length === 0) ? (
-        <div className="card text-center py-12 text-muted">No public tournaments found.</div>
+      {tournaments.length === 0 ? (
+        <div className="card text-center py-16"><p className="font-semibold">No public events found.</p><p className="text-sm text-muted mt-2">Create the first one and invite your playgroup.</p></div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {tournaments.map((t) => (
-            <Link key={t.id} href={`/tournaments/${t.id}`} className="card hover:border-accent transition-colors">
-              <div className="flex items-center justify-between mb-2">
-                <span className={`badge badge-${t.format}`}>{t.format}</span>
-                <span className={`badge ${statusBadgeClass(t.status)}`}>{displayStatus(t.status)}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {tournaments.map((event) => (
+            <Link key={event.id} href={`/tournaments/${event.id}`} className="card group hover:-translate-y-0.5 transition-transform">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <span className={`badge badge-${event.format}`}>{event.format === 'commander' && event.commanderMode === 'pods' ? 'Commander pods' : event.format}</span>
+                <span className={`badge ${statusBadgeClass(event.status)}`}>{displayStatus(event.status)}</span>
               </div>
-              <h3 className="text-lg font-bold mb-1">{t.name}</h3>
-              {t.description && <p className="text-sm text-muted mb-2 line-clamp-2">{t.description}</p>}
-              <div className="text-xs text-muted flex gap-4 mt-3">
-                <span>{t.rounds_count} rounds</span>
-                <span>Best of {t.games_per_round}</span>
-                {t.top_cut && <span>Top {t.top_cut} cut</span>}
-              </div>
-              <div className="text-xs text-muted mt-1">
-                {new Date(t.created_at).toLocaleDateString()}
+              <h2 className="font-bold text-lg group-hover:text-accent transition-colors">{event.name}</h2>
+              {event.description && <p className="text-sm text-muted mt-2 line-clamp-2 min-h-10">{event.description}</p>}
+              <div className="pt-4 mt-4 border-t border-border text-xs text-muted grid grid-cols-2 gap-2">
+                <span>{event.roundCount} Swiss rounds</span>
+                <span>{event.venue || 'Online / venue TBA'}</span>
+                {event.scheduledAt && <span className="col-span-2">{formatDateTime(event.scheduledAt)}</span>}
               </div>
             </Link>
           ))}

@@ -3,20 +3,17 @@
 import { useEffect, useState } from 'react'
 
 export function RoundTimer({ endsAt }: { endsAt: string | null }) {
-  const [timeLeft, setTimeLeft] = useState('')
+  const [remainingMs, setRemainingMs] = useState<number | null>(null)
 
   useEffect(() => {
     if (!endsAt) return
 
     const update = () => {
       const diff = new Date(endsAt).getTime() - Date.now()
+      setRemainingMs(diff)
       if (diff <= 0) {
-        setTimeLeft('Time!')
         return
       }
-      const mins = Math.floor(diff / 60000)
-      const secs = Math.floor((diff % 60000) / 1000)
-      setTimeLeft(`${mins}:${secs.toString().padStart(2, '0')}`)
     }
 
     update()
@@ -26,13 +23,16 @@ export function RoundTimer({ endsAt }: { endsAt: string | null }) {
 
   if (!endsAt) return null
 
-  const diff = new Date(endsAt).getTime() - Date.now()
-  const isUrgent = diff > 0 && diff < 5 * 60 * 1000
+  if (remainingMs === null) return <div className="font-mono text-2xl font-bold text-muted">--:--</div>
+  const isUrgent = remainingMs > 0 && remainingMs < 5 * 60 * 1000
+  const timeLeft = remainingMs <= 0
+    ? 'Time!'
+    : `${Math.floor(remainingMs / 60000)}:${Math.floor((remainingMs % 60000) / 1000).toString().padStart(2, '0')}`
 
   return (
     <div
       className={`font-mono text-2xl font-bold ${
-        isUrgent ? 'text-danger animate-pulse' : diff <= 0 ? 'text-danger' : 'text-accent'
+        isUrgent ? 'text-danger animate-pulse' : remainingMs <= 0 ? 'text-danger' : 'text-accent'
       }`}
     >
       {timeLeft}

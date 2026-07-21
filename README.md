@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# InvadersMTG
 
-## Getting Started
+InvadersMTG is a Magic: The Gathering tournament platform for organizers and players. It supports Draft, Sealed, Standard, 1v1 Commander, and 3–4 player Commander pods. Head-to-head events are best-of-one or best-of-three; Standard players can submit a deck list in MTG Arena export format.
 
-First, run the development server:
+## Local development
+
+1. Copy `.env.example` to `.env.local` and set a PostgreSQL `DATABASE_URL`.
+2. Run `npm install`.
+3. Run `npm run db:migrate` to create the schema.
+4. Run `npm run dev` and open `http://localhost:3000`.
+
+Useful checks:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Database and migrations
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The application uses PostgreSQL and Drizzle. Schema definitions live in `src/lib/db/schema.ts`; generated, committed migrations live in `drizzle/`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run db:generate  # generate a migration after a schema change
+npm run db:migrate   # apply migrations to DATABASE_URL
+```
 
-## Learn More
+The production container runs migrations before starting Next.js. This makes a fresh managed database usable without a separate migration service. Do not attach the app to a database shared with another application.
 
-To learn more about Next.js, take a look at the following resources:
+## Astroscale deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Create an Astroscale app with a managed PostgreSQL database in `us-east-1`, then deploy this repository as a Docker application on port `3000`. Astroscale injects `DATABASE_URL` when the database is attached.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Set these application environment variables:
 
-## Deploy on Vercel
+```text
+APP_URL=https://your-shared-domain
+SESSION_LIFETIME_DAYS=30
+DATABASE_POOL_MAX=5
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_USER=resend
+SMTP_PASSWORD=re_your_resend_api_key
+EMAIL_FROM=InvadersMTG <hello@your-verified-domain>
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Resend is the recommended transactional mail provider. Verify the sending domain in Resend before setting `EMAIL_FROM`; its SMTP relay uses `smtp.resend.com` and can be configured with the same Resend API key. See the [Resend SMTP documentation](https://resend.com/docs/send-with-smtp).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Never commit `.env.local`, database credentials, Resend keys, or production user data.

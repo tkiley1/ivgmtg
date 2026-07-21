@@ -1,359 +1,87 @@
-'use client'
-
-import { useEffect, useState, use } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { StandingsTable } from '@/components/StandingsTable'
-import { RoundTimer } from '@/components/RoundTimer'
 import Link from 'next/link'
-import { displayStatus, statusBadgeClass } from '@/lib/utils'
+import { notFound } from 'next/navigation'
+import { JoinPublicTournamentButton } from '@/components/JoinPublicTournamentButton'
+import { StandardDeckRegistration } from '@/components/StandardDeckRegistration'
+import { getCurrentUser } from '@/lib/auth/session'
+import { getTournamentOverview } from '@/lib/tournaments/queries'
+import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
 
-function playerName(p: any) {
-  if (!p) return 'Unknown'
-  if (p.first_name && p.last_name) return `${p.first_name} ${p.last_name}`
-  return p.username
-}
+export const dynamic = 'force-dynamic'
 
-export default function TournamentPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
-  const supabase = createClient()
-  const [tournament, setTournament] = useState<any>(null)
-  const [participants, setParticipants] = useState<any[]>([])
-  const [rounds, setRounds] = useState<any[]>([])
-  const [pairings, setPairings] = useState<any[]>([])
-  const [standings, setStandings] = useState<any[]>([])
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
-  const [commanderGames, setCommanderGames] = useState<any[]>([])
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [isParticipant, setIsParticipant] = useState(false)
-  const [joining, setJoining] = useState(false)
-
-  const load = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setCurrentUser(user?.id ?? null)
-
-    const { data: t } = await supabase.from('tournaments').select('*').eq('id', id).single()
-    setTournament(t)
-
-    const { data: parts } = await supabase
-      .from('tournament_participants')
-      .select('*, profiles(username, elo_rating, first_name, last_name)')
-      .eq('tournament_id', id)
-    setParticipants(parts ?? [])
-
-    const { data: rnds } = await supabase
-      .from('rounds')
-      .select('*')
-      .eq('tournament_id', id)
-      .order('round_number', { ascending: true })
-    setRounds(rnds ?? [])
-
-    const { data: pairs } = await supabase
-      .from('pairings')
-      .select('*, player1:profiles!pairings_player1_id_fkey(username, first_name, last_name), player2:profiles!pairings_player2_id_fkey(username, first_name, last_name)')
-      .eq('tournament_id', id)
-      .order('created_at', { ascending: true })
-    setPairings(pairs ?? [])
-
-    if (t && t.status !== 'pending') {
-      const { data: s } = await supabase.rpc('calculate_standings', { t_id: id })
-      setStandings(s ?? [])
-    }
-
-    // Load commander games
-    if (t && t.format === 'commander') {
-      const { data: cg } = await supabase
-        .from('commander_games')
-        .select('*, winner:profiles!commander_games_winner_id_fkey(username, first_name, last_name)')
-        .eq('tournament_id', id)
-        .order('game_number', { ascending: true })
-      setCommanderGames(cg ?? [])
-    }
-
-    if (user) {
-      const { data: admin } = await supabase
-        .from('tournament_admins')
-        .select('id')
-        .eq('tournament_id', id)
-        .eq('user_id', user.id)
-        .single()
-      setIsAdmin(!!admin)
-
-      const p = (parts ?? []).find((p: any) => p.user_id === user.id)
-      setIsParticipant(!!p && p.status !== 'dropped')
-    }
-  }
-
-  useEffect(() => {
-    load()
-
-    // Realtime subscriptions
-    const channel = supabase
-      .channel(`tournament-${id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pairings', filter: `tournament_id=eq.${id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds', filter: `tournament_id=eq.${id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments', filter: `id=eq.${id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'commander_games', filter: `tournament_id=eq.${id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tournament_participants', filter: `tournament_id=eq.${id}` }, () => load())
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [id])
-
-  const handleJoin = async () => {
-    setJoining(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { window.location.href = '/auth/login'; return }
-
-    const { data: profile } = await supabase.from('profiles').select('elo_rating').eq('id', user.id).single()
-    await supabase.from('tournament_participants').insert({
-      tournament_id: id,
-      user_id: user.id,
-      seed_elo: profile?.elo_rating ?? 1200,
-    })
-    setJoining(false)
-    load()
-  }
-
-  const handleDrop = async () => {
-    if (!confirm('Are you sure you want to drop from this tournament?')) return
-    await supabase.rpc('drop_from_tournament', { p_tournament_id: id })
-    load()
-  }
-
-  if (!tournament) return <div className="max-w-7xl mx-auto px-4 py-8 text-muted">Loading...</div>
-
-  const activeRound = rounds.find(r => r.status === 'active')
-  const currentRoundPairings = activeRound
-    ? pairings.filter(p => p.round_id === activeRound.id)
-    : []
-
-  const myMatch = currentRoundPairings.find(
-    p => p.player1_id === currentUser || p.player2_id === currentUser
-  )
+export default async function TournamentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const user = await getCurrentUser()
+  const overview = await getTournamentOverview(id, user?.id)
+  if (!overview) notFound()
+  const { tournament, participants, rounds, matches, standings, isOrganizer, isParticipant, viewerDeckList } = overview
+  const activeRound = rounds.find((round) => round.status === 'active')
+  const activeMatches = activeRound ? matches.filter((match) => match.roundId === activeRound.id) : []
+  const registered = participants.filter((participant) => !['dropped', 'disqualified'].includes(participant.status))
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-3xl font-bold">{tournament.name}</h1>
-            <span className={`badge badge-${tournament.format}`}>{tournament.format}</span>
-            <span className={`badge ${statusBadgeClass(tournament.status)}`}>{displayStatus(tournament.status)}</span>
-          </div>
-          {tournament.description && <p className="text-muted">{tournament.description}</p>}
-          <div className="text-sm text-muted mt-2 flex gap-4">
-            {tournament.format !== 'commander' && <span>{tournament.rounds_count} rounds</span>}
-            <span>{tournament.format === 'commander' ? `${tournament.games_per_round} games` : `Best of ${tournament.games_per_round}`}</span>
-            {tournament.format !== 'commander' && <span>{tournament.round_time_limit_minutes} min/round</span>}
-            {tournament.top_cut && <span>Top {tournament.top_cut} cut</span>}
-            <span>{participants.filter((p: any) => p.status !== 'dropped').length} players</span>
-          </div>
-          {tournament.access_key && isAdmin && (
-            <div className="text-sm text-muted mt-1">
-              Access Key: <span className="font-mono text-accent">{tournament.access_key}</span>
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-7">
+      <section className="card overflow-hidden relative">
+        <div className="absolute right-0 top-0 w-48 h-48 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+        <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className={`badge badge-${tournament.format}`}>{tournament.format === 'commander' && tournament.commanderMode === 'pods' ? 'Commander pods' : tournament.format}</span>
+              <span className={`badge ${statusBadgeClass(tournament.status)}`}>{displayStatus(tournament.status)}</span>
+              {tournament.venue && <span className="text-sm text-muted">{tournament.venue}</span>}
             </div>
-          )}
+            <h1 className="text-3xl sm:text-4xl font-bold">{tournament.name}</h1>
+            {tournament.description && <p className="text-muted mt-3 leading-relaxed">{tournament.description}</p>}
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted mt-5">
+              <span>{registered.length}{tournament.capacity ? ` / ${tournament.capacity}` : ''} players</span>
+              <span>{tournament.roundCount} Swiss rounds</span>
+              <span>{tournament.format === 'commander' && tournament.commanderMode === 'pods' ? `${tournament.podSize}-player tables` : `Best of ${tournament.gamesPerMatch}`}</span>
+              {tournament.scheduledAt && <span>{formatDateTime(tournament.scheduledAt)}</span>}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3 shrink-0">
+            {isOrganizer && <Link href={`/tournaments/${id}/manage`} className="btn-primary">Organizer controls</Link>}
+            {!isParticipant && tournament.status === 'registration' && (user ? <JoinPublicTournamentButton tournamentId={id} /> : <Link href={`/auth/login?redirect=/tournaments/${id}`} className="btn-primary">Sign in to join</Link>)}
+            {isParticipant && <span className="btn-secondary cursor-default">You&apos;re registered</span>}
+          </div>
         </div>
-        <div className="flex gap-2">
-          {isAdmin && (
-            <Link href={`/tournaments/${id}/manage`} className="btn-primary">Manage</Link>
-          )}
-          {!isParticipant && tournament.status === 'pending' && (
-            <button onClick={handleJoin} disabled={joining} className="btn-primary">
-              {joining ? 'Joining...' : 'Join Tournament'}
-            </button>
-          )}
-          {isParticipant && tournament.status !== 'completed' && (
-            <button onClick={handleDrop} className="btn-danger">Drop</button>
-          )}
-        </div>
-      </div>
+      </section>
 
-      {/* Commander View */}
-      {tournament.format === 'commander' && tournament.status !== 'pending' && (
-        <div className="card mb-8">
-          <h2 className="text-xl font-bold mb-4">
-            Games ({commanderGames.length} / {tournament.games_per_round})
-          </h2>
-
-          {/* Commander Leaderboard */}
-          {(() => {
-            const activeParts = participants.filter((p: any) => p.status !== 'dropped')
-            const winCounts = new Map<string, number>()
-            activeParts.forEach((p: any) => winCounts.set(p.user_id, 0))
-            commanderGames.forEach((g: any) => {
-              if (g.winner_id) winCounts.set(g.winner_id, (winCounts.get(g.winner_id) ?? 0) + 1)
-            })
-            const sorted = activeParts
-              .map((p: any) => ({ ...p, wins: winCounts.get(p.user_id) ?? 0 }))
-              .sort((a: any, b: any) => b.wins - a.wins)
-
-            return (
-              <div className="mb-6">
-                <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Standings</h3>
+      {activeRound && (
+        <section className="card">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
+            <div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Now playing</p><h2 className="text-2xl font-bold mt-1">Round {activeRound.roundNumber}</h2></div>
+            {activeRound.endsAt && <p className="text-sm text-muted">Round ends {formatDateTime(activeRound.endsAt)}</p>}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {activeMatches.map((match) => (
+              <Link key={match.id} href={`/tournaments/${id}/match/${match.id}`} className="rounded-lg border border-border bg-background/40 p-4 hover:border-accent transition-colors">
+                <div className="flex justify-between text-xs text-muted mb-3"><span>Table {match.tableNumber ?? '—'}</span><span className="uppercase">{match.status}</span></div>
                 <div className="space-y-1">
-                  {sorted.map((p: any, i: number) => (
-                    <div key={p.user_id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-muted font-mono w-6">{i + 1}</span>
-                        <Link href={`/profile/${p.profiles?.username}`} className="text-accent hover:underline">
-                          {p.profiles?.first_name && p.profiles?.last_name
-                            ? `${p.profiles.first_name} ${p.profiles.last_name}`
-                            : p.profiles?.username}
-                        </Link>
-                      </div>
-                      <span className="font-bold font-mono">{p.wins} {p.wins === 1 ? 'win' : 'wins'}</span>
-                    </div>
-                  ))}
+                  {match.players.map((player) => <p key={player.userId} className="font-medium">{player.displayName} <span className="text-muted font-normal">@{player.username}</span></p>)}
                 </div>
-              </div>
-            )
-          })()}
-
-          {/* Game Log */}
-          {commanderGames.length > 0 && (
-            <div>
-              <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Game Log</h3>
-              <div className="space-y-1">
-                {commanderGames.map((g: any) => (
-                  <div key={g.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2 text-sm">
-                    <span className="text-muted">Game {g.game_number}</span>
-                    <span className="text-success font-bold">
-                      {g.winner ? playerName(g.winner) : 'No winner recorded'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {tournament.status === 'completed' && (
-            <div className="bg-success/10 border border-success/30 text-success rounded-lg p-3 text-center mt-4">
-              Tournament completed!
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Active Round (non-commander) */}
-      {tournament.format !== 'commander' && activeRound && (
-        <div className="card mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">
-              {activeRound.is_top_cut ? 'Top Cut' : `Round ${activeRound.round_number}`}
-            </h2>
-            <RoundTimer endsAt={activeRound.ends_at} />
-          </div>
-
-          {myMatch && (
-            <Link
-              href={`/tournaments/${id}/match/${myMatch.id}`}
-              className="block bg-primary/10 border border-primary/30 rounded-lg p-4 mb-4 hover:bg-primary/20 transition-colors"
-            >
-              <div className="text-sm text-muted mb-1">Your Match</div>
-              <div className="text-lg font-bold">
-                {playerName(myMatch.player1)} vs {myMatch.is_bye ? 'BYE' : playerName(myMatch.player2)}
-              </div>
-              {myMatch.status === 'completed' ? (
-                <div className="text-sm text-success mt-1">
-                  {myMatch.player1_games_won} - {myMatch.player2_games_won}
-                  {myMatch.games_drawn > 0 && ` (${myMatch.games_drawn} draws)`}
-                </div>
-              ) : (
-                <div className="text-sm text-accent mt-1">Click to report score</div>
-              )}
-            </Link>
-          )}
-
-          <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">Pairings</h3>
-          <div className="space-y-2">
-            {currentRoundPairings.map((p: any) => (
-              <div key={p.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2">
-                <div className="flex items-center gap-2">
-                  <span className={p.winner_id === p.player1_id ? 'font-bold text-success' : ''}>
-                    {playerName(p.player1)}
-                  </span>
-                  <span className="text-muted">vs</span>
-                  <span className={p.winner_id === p.player2_id ? 'font-bold text-success' : ''}>
-                    {p.is_bye ? 'BYE' : playerName(p.player2)}
-                  </span>
-                </div>
-                <div className="text-sm font-mono">
-                  {p.status === 'completed' ? (
-                    <span className="text-success">
-                      {p.player1_games_won}-{p.player2_games_won}
-                      {p.games_drawn > 0 && `-${p.games_drawn}`}
-                    </span>
-                  ) : (
-                    <span className="text-muted">pending</span>
-                  )}
-                </div>
-              </div>
+              </Link>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Standings (non-commander) */}
-      {tournament.format !== 'commander' && standings.length > 0 && (
-        <div className="card mb-8">
-          <h2 className="text-xl font-bold mb-4">Standings</h2>
-          <StandingsTable standings={standings} />
-        </div>
+      {tournament.format === 'standard' && user && isParticipant && (
+        <StandardDeckRegistration tournamentId={id} required={tournament.deckListsRequired} existing={viewerDeckList} />
       )}
 
-      {/* Participants (pending tournaments) */}
-      {tournament.status === 'pending' && (
-        <div className="card">
-          <h2 className="text-xl font-bold mb-4">
-            Registered Players ({participants.filter((p: any) => p.status !== 'dropped').length})
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            {participants
-              .filter((p: any) => p.status !== 'dropped')
-              .map((p: any) => (
-                <Link
-                  key={p.id}
-                  href={`/profile/${p.profiles?.username}`}
-                  className="bg-background/50 rounded-lg px-3 py-2 text-sm hover:bg-card-hover"
-                >
-                  <span className="text-accent">{p.profiles?.username}</span>
-                  <span className="text-muted ml-2">{p.seed_elo} ELO</span>
-                </Link>
-              ))}
-          </div>
-        </div>
-      )}
-
-      {/* Round History */}
-      {rounds.filter(r => r.status === 'completed').length > 0 && (
-        <div className="card mt-8">
-          <h2 className="text-xl font-bold mb-4">Round History</h2>
-          {rounds.filter(r => r.status === 'completed').map(r => {
-            const roundPairings = pairings.filter(p => p.round_id === r.id)
-            return (
-              <div key={r.id} className="mb-6 last:mb-0">
-                <h3 className="text-sm font-bold text-muted uppercase tracking-wider mb-2">
-                  {r.is_top_cut ? 'Top Cut' : `Round ${r.round_number}`}
-                </h3>
-                <div className="space-y-1">
-                  {roundPairings.map((p: any) => (
-                    <div key={p.id} className="flex items-center justify-between bg-background/50 rounded-lg px-4 py-2 text-sm">
-                      <div>
-                        <span className={p.winner_id === p.player1_id ? 'font-bold text-success' : ''}>{p.player1?.username}</span>
-                        <span className="text-muted mx-2">vs</span>
-                        <span className={p.winner_id === p.player2_id ? 'font-bold text-success' : ''}>{p.is_bye ? 'BYE' : p.player2?.username}</span>
-                      </div>
-                      <span className="font-mono">{p.player1_games_won}-{p.player2_games_won}{p.games_drawn > 0 && `-${p.games_drawn}`}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-7">
+        <section className="card">
+          <h2 className="text-xl font-bold mb-5">Standings</h2>
+          {standings.length === 0 ? <p className="text-muted text-sm">Standings will appear after the first result is confirmed.</p> : (
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-border text-muted text-left"><th className="py-2 pr-3">#</th><th className="py-2 pr-3">Player</th><th className="py-2 pr-3">Pts</th><th className="py-2 pr-3">Record</th><th className="py-2">OMW%</th></tr></thead><tbody>{standings.map((standing) => <tr key={standing.userId} className="border-b border-border/50"><td className="py-3 pr-3 font-mono">{standing.rank}</td><td className="py-3 pr-3"><Link href={`/profile/${standing.username}`} className="hover:text-accent">@{standing.username}</Link></td><td className="py-3 pr-3 font-bold">{standing.matchPoints}</td><td className="py-3 pr-3 font-mono">{standing.matchWins}-{standing.matchLosses}-{standing.matchDraws}</td><td className="py-3 font-mono">{(standing.opponentMatchWinPercentage * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
+          )}
+        </section>
+        <section className="card">
+          <h2 className="text-xl font-bold mb-5">Players <span className="text-muted font-normal">({registered.length})</span></h2>
+          {registered.length === 0 ? <p className="text-sm text-muted">Be the first player to join.</p> : <div className="space-y-2">{registered.map((player) => <Link key={player.id} href={`/profile/${player.username}`} className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2 hover:bg-card-hover"><span>@{player.username}</span><span className="text-xs text-muted">{player.status.replace('_', ' ')}</span></Link>)}</div>}
+          {isOrganizer && <div className="mt-5 pt-4 border-t border-border text-sm text-muted">Access key: <span className="font-mono text-accent">{tournament.accessKey}</span></div>}
+        </section>
+      </div>
     </div>
   )
 }
