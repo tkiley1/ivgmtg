@@ -44,6 +44,7 @@ function LoginForm() {
       <button type="submit" disabled={pending} className="btn-primary w-full justify-center">
         {pending ? 'Signing in...' : 'Sign In'}
       </button>
+      <p className="text-right text-sm"><Link href="/auth/forgot-password" className="text-accent hover:underline">Forgot password?</Link></p>
     </form>
   )
 }

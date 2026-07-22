@@ -6,11 +6,15 @@ import { z } from 'zod'
 import { requireCurrentUser } from '@/lib/auth/session'
 import {
   completeActiveRound,
+  checkInToTournament,
   confirmMatchResult,
   createTournament,
   joinPublicTournament,
   joinTournamentByAccessKey,
   joinTournamentByInviteToken,
+  openCheckIn,
+  promoteWaitlist,
+  removeParticipant,
   reportMatchResult,
   startNextRound,
   submitStandardDeckList,
@@ -141,6 +145,59 @@ export async function completeRoundAction(_: TournamentActionState, formData: Fo
     return {}
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Unable to complete this round.' }
+  }
+}
+
+export async function openCheckInAction(_: TournamentActionState, formData: FormData): Promise<TournamentActionState> {
+  const tournamentId = z.string().uuid().safeParse(formData.get('tournamentId'))
+  if (!tournamentId.success) return { error: 'That tournament link is invalid.' }
+  try {
+    const user = await requireCurrentUser()
+    await openCheckIn(tournamentId.data, user.id)
+    refreshTournament(tournamentId.data)
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to open check-in.' }
+  }
+}
+
+export async function checkInAction(_: TournamentActionState, formData: FormData): Promise<TournamentActionState> {
+  const tournamentId = z.string().uuid().safeParse(formData.get('tournamentId'))
+  if (!tournamentId.success) return { error: 'That tournament link is invalid.' }
+  try {
+    const user = await requireCurrentUser()
+    await checkInToTournament(tournamentId.data, user.id)
+    refreshTournament(tournamentId.data)
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to check in.' }
+  }
+}
+
+export async function promoteWaitlistAction(_: TournamentActionState, formData: FormData): Promise<TournamentActionState> {
+  const tournamentId = z.string().uuid().safeParse(formData.get('tournamentId'))
+  if (!tournamentId.success) return { error: 'That tournament link is invalid.' }
+  try {
+    const user = await requireCurrentUser()
+    await promoteWaitlist(tournamentId.data, user.id)
+    refreshTournament(tournamentId.data)
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to promote the waitlist.' }
+  }
+}
+
+export async function removeParticipantAction(_: TournamentActionState, formData: FormData): Promise<TournamentActionState> {
+  const tournamentId = z.string().uuid().safeParse(formData.get('tournamentId'))
+  const participantUserId = z.string().uuid().safeParse(formData.get('participantUserId'))
+  if (!tournamentId.success || !participantUserId.success) return { error: 'That participant link is invalid.' }
+  try {
+    const user = await requireCurrentUser()
+    await removeParticipant(tournamentId.data, user.id, participantUserId.data)
+    refreshTournament(tournamentId.data)
+    return {}
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Unable to remove this participant.' }
   }
 }
 

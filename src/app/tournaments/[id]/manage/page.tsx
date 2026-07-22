@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { OrganizerRoundControls } from '@/components/OrganizerRoundControls'
+import { ParticipantAdminList } from '@/components/ParticipantAdminList'
 import { requireCurrentUser } from '@/lib/auth/session'
 import { getTournamentOverview } from '@/lib/tournaments/queries'
 import { displayStatus, statusBadgeClass } from '@/lib/utils'
@@ -18,7 +19,9 @@ export default async function ManageTournamentPage({ params }: { params: Promise
   const activeRound = rounds.find((round) => round.status === 'active')
   const activeMatches = activeRound ? matches.filter((match) => match.roundId === activeRound.id) : []
   const pendingMatches = activeMatches.filter((match) => match.status !== 'complete')
-  const completedRounds = rounds.filter((round) => round.status === 'completed').length
+  const completedRounds = rounds.filter((round) => round.status === 'completed' && !round.isTopCut).length
+  const checkedIn = participants.filter((player) => player.status === 'checked_in').length
+  const waitlisted = participants.filter((player) => player.status === 'waitlisted').length
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-7">
@@ -30,8 +33,8 @@ export default async function ManageTournamentPage({ params }: { params: Promise
       <section className="card">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Round control</p>
         <h2 className="text-2xl font-bold mt-2 mb-2">{tournament.name}</h2>
-        <p className="text-muted mb-5">{participants.filter((player) => player.status === 'active' || player.status === 'registered' || player.status === 'checked_in').length} active players · {completedRounds} / {tournament.roundCount} Swiss rounds complete</p>
-        <OrganizerRoundControls tournamentId={id} hasActiveRound={Boolean(activeRound)} completedRounds={completedRounds} roundCount={tournament.roundCount} />
+        <p className="text-muted mb-5">{participants.filter((player) => player.status === 'active' || player.status === 'registered' || player.status === 'checked_in').length} registered · {checkedIn} checked in · {waitlisted} waitlisted · {completedRounds} / {tournament.roundCount} Swiss rounds complete</p>
+        <OrganizerRoundControls tournamentId={id} hasActiveRound={Boolean(activeRound)} completedRounds={completedRounds} roundCount={tournament.roundCount} status={tournament.status} hasWaitlist={waitlisted > 0} />
       </section>
 
       {activeRound && <section className="card">
@@ -39,10 +42,9 @@ export default async function ManageTournamentPage({ params }: { params: Promise
         <div className="space-y-2">{activeMatches.map((match) => <Link key={match.id} href={`/tournaments/${id}/match/${match.id}`} className="flex items-center justify-between rounded-lg border border-border bg-background/40 px-4 py-3 hover:border-accent"><span>{match.players.map((player) => `@${player.username}`).join(' · ')}</span><span className="text-sm text-muted uppercase">{match.status}</span></Link>)}</div>
       </section>}
 
-      <section className="card">
-        <h2 className="text-xl font-bold mb-4">Event operations</h2>
-        <p className="text-sm text-muted">Check-in, participant removal, event settings, top-cut bracket generation, and audit-log views are the next organizer controls to wire into this secure engine.</p>
-      </section>
+      {!activeRound && <ParticipantAdminList tournamentId={id} participants={participants} />}
+
+      <section className="card"><h2 className="text-xl font-bold mb-2">Event operations</h2><p className="text-sm text-muted">Open check-in when you are ready. Checked-in players are the only players paired when the first round starts. Capacity is enforced automatically, and the waitlist can be promoted when a seat opens.</p></section>
     </div>
   )
 }

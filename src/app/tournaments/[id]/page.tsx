@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { JoinPublicTournamentButton } from '@/components/JoinPublicTournamentButton'
 import { StandardDeckRegistration } from '@/components/StandardDeckRegistration'
+import { TournamentCheckInButton } from '@/components/TournamentCheckInButton'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getTournamentOverview } from '@/lib/tournaments/queries'
 import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
@@ -13,10 +14,11 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
   const user = await getCurrentUser()
   const overview = await getTournamentOverview(id, user?.id)
   if (!overview) notFound()
-  const { tournament, participants, rounds, matches, standings, isOrganizer, isParticipant, viewerDeckList } = overview
+  const { tournament, participants, rounds, matches, standings, isOrganizer, isParticipant, viewerParticipant, viewerDeckList } = overview
   const activeRound = rounds.find((round) => round.status === 'active')
   const activeMatches = activeRound ? matches.filter((match) => match.roundId === activeRound.id) : []
-  const registered = participants.filter((participant) => !['dropped', 'disqualified'].includes(participant.status))
+  const registered = participants.filter((participant) => !['dropped', 'disqualified', 'waitlisted'].includes(participant.status))
+  const waitlisted = participants.filter((participant) => participant.status === 'waitlisted')
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-7">
@@ -32,7 +34,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
             <h1 className="text-3xl sm:text-4xl font-bold">{tournament.name}</h1>
             {tournament.description && <p className="text-muted mt-3 leading-relaxed">{tournament.description}</p>}
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted mt-5">
-              <span>{registered.length}{tournament.capacity ? ` / ${tournament.capacity}` : ''} players</span>
+              <span>{registered.length}{tournament.capacity ? ` / ${tournament.capacity}` : ''} players{waitlisted.length ? ` · ${waitlisted.length} waitlisted` : ''}</span>
               <span>{tournament.roundCount} Swiss rounds</span>
               <span>{tournament.format === 'commander' && tournament.commanderMode === 'pods' ? `${tournament.podSize}-player tables` : `Best of ${tournament.gamesPerMatch}`}</span>
               {tournament.scheduledAt && <span>{formatDateTime(tournament.scheduledAt)}</span>}
@@ -41,7 +43,10 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
           <div className="flex flex-wrap gap-3 shrink-0">
             {isOrganizer && <Link href={`/tournaments/${id}/manage`} className="btn-primary">Organizer controls</Link>}
             {!isParticipant && tournament.status === 'registration' && (user ? <JoinPublicTournamentButton tournamentId={id} /> : <Link href={`/auth/login?redirect=/tournaments/${id}`} className="btn-primary">Sign in to join</Link>)}
-            {isParticipant && <span className="btn-secondary cursor-default">You&apos;re registered</span>}
+            {viewerParticipant?.status === 'registered' && <span className="btn-secondary cursor-default">You&apos;re registered</span>}
+            {viewerParticipant?.status === 'checked_in' && <span className="btn-secondary cursor-default">You&apos;re checked in</span>}
+            {viewerParticipant?.status === 'waitlisted' && <span className="btn-secondary cursor-default">You&apos;re waitlisted</span>}
+            {viewerParticipant?.status === 'registered' && tournament.status === 'check_in' && <TournamentCheckInButton tournamentId={id} />}
           </div>
         </div>
       </section>

@@ -1,11 +1,12 @@
 import { randomBytes } from 'crypto'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import {
   auditEvents,
   deckLists,
   matchPlayers,
   matches,
+  playerRatings,
   profiles,
   rounds,
   tournamentOrganizers,
@@ -125,7 +126,11 @@ export async function joinTournamentByAccessKey(userId: string, accessKey: strin
           eq(tournamentParticipants.tournamentId, tournament.id),
           sql`${tournamentParticipants.status} not in ('dropped', 'disqualified')`,
         ))
-      if (count.count >= tournament.capacity) throw new Error('This tournament has reached capacity.')
+      if (count.count >= tournament.capacity) {
+        await tx.insert(tournamentParticipants).values({ tournamentId: tournament.id, userId, status: 'waitlisted' })
+        await tx.insert(auditEvents).values({ tournamentId: tournament.id, actorId: userId, action: 'participant.waitlisted', entityType: 'participant', entityId: userId })
+        return tournament.id
+      }
     }
 
     const [profile] = await tx
@@ -172,7 +177,11 @@ export async function joinPublicTournament(userId: string, tournamentId: string)
           eq(tournamentParticipants.tournamentId, tournamentId),
           sql`${tournamentParticipants.status} not in ('dropped', 'disqualified')`,
         ))
-      if (count.count >= tournament.capacity) throw new Error('This tournament has reached capacity.')
+      if (count.count >= tournament.capacity) {
+        await tx.insert(tournamentParticipants).values({ tournamentId, userId, status: 'waitlisted' })
+        await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'participant.waitlisted', entityType: 'participant', entityId: userId })
+        return tournamentId
+      }
     }
 
     await tx.insert(tournamentParticipants).values({ tournamentId, userId, status: 'registered' })
@@ -196,7 +205,11 @@ export async function joinTournamentByInviteToken(userId: string, inviteToken: s
     if (existing) return tournament.id
     if (tournament.capacity) {
       const [count] = await tx.select({ count: sql<number>`count(*)::int` }).from(tournamentParticipants).where(and(eq(tournamentParticipants.tournamentId, tournament.id), sql`${tournamentParticipants.status} not in ('dropped', 'disqualified')`))
-      if (count.count >= tournament.capacity) throw new Error('This tournament has reached capacity.')
+      if (count.count >= tournament.capacity) {
+        await tx.insert(tournamentParticipants).values({ tournamentId: tournament.id, userId, status: 'waitlisted' })
+        await tx.insert(auditEvents).values({ tournamentId: tournament.id, actorId: userId, action: 'participant.waitlisted', entityType: 'participant', entityId: userId })
+        return tournament.id
+      }
     }
     await tx.insert(tournamentParticipants).values({ tournamentId: tournament.id, userId, status: 'registered' })
     await tx.insert(auditEvents).values({ tournamentId: tournament.id, actorId: userId, action: 'participant.joined_by_invite', entityType: 'participant', entityId: userId })
@@ -222,9 +235,12 @@ async function assertOrganizer(tournamentId: string, userId: string) {
   }
 }
 
+type DatabaseTransaction = Parameters<ReturnType<typeof getDb>['transaction']>[0] extends (tx: infer Transaction) => unknown ? Transaction : never
+
 async function pairingPlayersForRound(
-  tx: Parameters<ReturnType<typeof getDb>['transaction']>[0] extends (tx: infer Transaction) => unknown ? Transaction : never,
+  tx: DatabaseTransaction,
   tournamentId: string,
+  eligibleStatuses: Array<'registered' | 'checked_in' | 'active'>,
 ): Promise<PairingPlayer[]> {
   const activePlayers = await tx
     .select({
@@ -236,7 +252,7 @@ async function pairingPlayersForRound(
     .innerJoin(profiles, eq(tournamentParticipants.userId, profiles.userId))
     .where(and(
       eq(tournamentParticipants.tournamentId, tournamentId),
-      inArray(tournamentParticipants.status, ['registered', 'checked_in', 'active']),
+      inArray(tournamentParticipants.status, eligibleStatuses),
     ))
 
   const rows = await tx
@@ -292,6 +308,136 @@ async function pairingPlayersForRound(
   }))
 }
 
+export async function openCheckIn(tournamentId: string, userId: string) {
+  await assertOrganizer(tournamentId, userId)
+  return getDb().transaction(async (tx) => {
+    const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
+    if (!tournament) throw new Error('Tournament not found.')
+    if (tournament.status !== 'registration') throw new Error('Check-in can only open while registration is active.')
+    await tx.update(tournaments).set({ status: 'check_in', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
+    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'check_in.opened', entityType: 'tournament', entityId: tournamentId })
+  })
+}
+
+export async function checkInToTournament(tournamentId: string, userId: string) {
+  return getDb().transaction(async (tx) => {
+    const [tournament] = await tx.select({ status: tournaments.status }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
+    if (!tournament || tournament.status !== 'check_in') throw new Error('Check-in is not open for this event.')
+    const [participant] = await tx.select().from(tournamentParticipants).where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, userId))).limit(1)
+    if (!participant) throw new Error('Join this event before checking in.')
+    if (participant.status === 'waitlisted') throw new Error('You are currently waitlisted. An organizer must promote you before you can check in.')
+    if (participant.status !== 'registered') {
+      if (participant.status === 'checked_in') return
+      throw new Error('You cannot check in to this event right now.')
+    }
+    await tx.update(tournamentParticipants).set({ status: 'checked_in', checkedInAt: new Date() }).where(eq(tournamentParticipants.id, participant.id))
+    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'participant.checked_in', entityType: 'participant', entityId: participant.id })
+  })
+}
+
+export async function promoteWaitlist(tournamentId: string, userId: string) {
+  await assertOrganizer(tournamentId, userId)
+  return getDb().transaction(async (tx) => {
+    const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
+    if (!tournament?.capacity) throw new Error('This event does not have a capacity limit.')
+    const [occupied] = await tx.select({ count: sql<number>`count(*)::int` }).from(tournamentParticipants).where(and(
+      eq(tournamentParticipants.tournamentId, tournamentId),
+      inArray(tournamentParticipants.status, ['registered', 'checked_in', 'active']),
+    ))
+    const available = Math.max(0, tournament.capacity - occupied.count)
+    if (!available) throw new Error('There are no open seats to promote from the waitlist.')
+    const waiting = await tx.select().from(tournamentParticipants).where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.status, 'waitlisted'))).orderBy(asc(tournamentParticipants.createdAt)).limit(available)
+    if (!waiting.length) throw new Error('There are no players on the waitlist.')
+    await tx.update(tournamentParticipants).set({ status: 'registered' }).where(inArray(tournamentParticipants.id, waiting.map((participant) => participant.id)))
+    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'waitlist.promoted', entityType: 'tournament', entityId: tournamentId, details: { participantIds: waiting.map((participant) => participant.id) } })
+    return waiting.length
+  })
+}
+
+export async function removeParticipant(tournamentId: string, actorId: string, participantUserId: string) {
+  await assertOrganizer(tournamentId, actorId)
+  return getDb().transaction(async (tx) => {
+    const [activeRound] = await tx.select({ id: rounds.id }).from(rounds).where(and(eq(rounds.tournamentId, tournamentId), eq(rounds.status, 'active'))).limit(1)
+    if (activeRound) throw new Error('Complete the active round before changing the participant list.')
+    const [participant] = await tx.select().from(tournamentParticipants).where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, participantUserId))).limit(1)
+    if (!participant || ['dropped', 'disqualified'].includes(participant.status)) throw new Error('That player is no longer active in this event.')
+    await tx.update(tournamentParticipants).set({ status: 'dropped', droppedAt: new Date() }).where(eq(tournamentParticipants.id, participant.id))
+    await tx.insert(auditEvents).values({ tournamentId, actorId, action: 'participant.removed', entityType: 'participant', entityId: participant.id, details: { userId: participantUserId } })
+  })
+}
+
+async function startNextTopCutRound(
+  tx: DatabaseTransaction,
+  tournament: typeof tournaments.$inferSelect,
+  userId: string,
+) {
+  if (!tournament.topCutSize) throw new Error('This event does not have a top cut configured.')
+  if (tournament.format === 'commander' && tournament.commanderMode === 'pods') {
+    throw new Error('Top cut is currently available for 1v1 events only.')
+  }
+
+  const allRounds = await tx.select().from(rounds).where(eq(rounds.tournamentId, tournament.id)).orderBy(rounds.roundNumber)
+  if (allRounds.some((round) => round.status === 'active')) throw new Error('Complete the active round before generating the bracket.')
+  const topCutRounds = allRounds.filter((round) => round.isTopCut)
+  let playerIds: string[]
+
+  if (!topCutRounds.length) {
+    const ranked = await pairingPlayersForRound(tx, tournament.id, ['active', 'checked_in', 'registered'])
+    if (ranked.length < tournament.topCutSize) throw new Error(`At least ${tournament.topCutSize} players are needed for this top cut.`)
+    playerIds = ranked.slice(0, tournament.topCutSize).map((player) => player.userId)
+  } else {
+    const previous = topCutRounds.at(-1)!
+    const previousMatches = await tx.select().from(matches).where(and(eq(matches.roundId, previous.id), eq(matches.status, 'complete'))).orderBy(matches.tableNumber)
+    const winners: string[] = []
+    for (const match of previousMatches) {
+      const players = await tx.select().from(matchPlayers).where(eq(matchPlayers.matchId, match.id)).orderBy(matchPlayers.seat)
+      const winner = players.find((player) => player.result === 'win' || player.result === 'bye')
+      if (!winner) throw new Error('Every top-cut match needs a winner before the next bracket round can start.')
+      winners.push(winner.userId)
+    }
+    if (winners.length < 2) {
+      await tx.update(tournaments).set({ status: 'completed', updatedAt: new Date() }).where(eq(tournaments.id, tournament.id))
+      return null
+    }
+    playerIds = winners
+  }
+
+  const [round] = await tx.insert(rounds).values({
+    tournamentId: tournament.id,
+    roundNumber: (allRounds.at(-1)?.roundNumber ?? 0) + 1,
+    stage: 'top_cut',
+    isTopCut: true,
+    status: 'active',
+    startsAt: new Date(),
+    endsAt: new Date(Date.now() + tournament.roundTimeLimitMinutes * 60_000),
+  }).returning()
+
+  for (let index = 0; index < playerIds.length / 2; index += 1) {
+    const [match] = await tx.insert(matches).values({
+      tournamentId: tournament.id,
+      roundId: round.id,
+      kind: 'head_to_head',
+      tableNumber: index + 1,
+      status: 'pending',
+    }).returning({ id: matches.id })
+    const first = playerIds[index]
+    const second = playerIds[playerIds.length - 1 - index]
+    await tx.insert(matchPlayers).values([
+      { matchId: match.id, userId: first, seat: 1 },
+      { matchId: match.id, userId: second, seat: 2 },
+    ])
+  }
+  await tx.insert(auditEvents).values({
+    tournamentId: tournament.id,
+    actorId: userId,
+    action: 'top_cut.round_started',
+    entityType: 'round',
+    entityId: round.id,
+    details: { playerCount: playerIds.length },
+  })
+  return round
+}
+
 export async function startNextRound(tournamentId: string, userId: string) {
   await assertOrganizer(tournamentId, userId)
 
@@ -299,22 +445,26 @@ export async function startNextRound(tournamentId: string, userId: string) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${tournamentId}))`)
     const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
     if (!tournament) throw new Error('Tournament not found.')
+    if (tournament.status === 'top_cut') {
+      return startNextTopCutRound(tx, tournament, userId)
+    }
     if (!['registration', 'check_in', 'active'].includes(tournament.status)) {
       throw new Error('This tournament cannot start another Swiss round.')
     }
 
     const existingRounds = await tx
-      .select({ id: rounds.id, status: rounds.status })
+      .select({ id: rounds.id, status: rounds.status, isTopCut: rounds.isTopCut })
       .from(rounds)
       .where(eq(rounds.tournamentId, tournamentId))
     if (existingRounds.some((round) => round.status === 'active')) {
       throw new Error('Complete the active round before generating another one.')
     }
-    if (existingRounds.length >= tournament.roundCount) {
+    if (existingRounds.filter((round) => !round.isTopCut).length >= tournament.roundCount) {
       throw new Error('All scheduled Swiss rounds have already been generated.')
     }
 
-    const players = await pairingPlayersForRound(tx, tournamentId)
+    const eligibleStatuses = tournament.status === 'check_in' ? ['checked_in', 'active'] as const : ['registered', 'checked_in', 'active'] as const
+    const players = await pairingPlayersForRound(tx, tournamentId, [...eligibleStatuses])
     const minimumPlayers = tournament.format === 'commander' && tournament.commanderMode === 'pods' ? 3 : 2
     if (players.length < minimumPlayers) {
       throw new Error(`At least ${minimumPlayers} active players are needed to start this event.`)
@@ -363,7 +513,7 @@ export async function startNextRound(tournamentId: string, userId: string) {
       .set({ status: 'active' })
       .where(and(
         eq(tournamentParticipants.tournamentId, tournamentId),
-        inArray(tournamentParticipants.status, ['registered', 'checked_in']),
+        inArray(tournamentParticipants.status, [...eligibleStatuses]),
       ))
     await tx.update(tournaments).set({ status: 'active', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
     await tx.insert(auditEvents).values({
@@ -399,7 +549,21 @@ export async function completeActiveRound(tournamentId: string, userId: string) 
 
     await tx.update(rounds).set({ status: 'completed' }).where(eq(rounds.id, activeRound.id))
     const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
-    if (tournament && activeRound.roundNumber >= tournament.roundCount) {
+    if (tournament && activeRound.isTopCut) {
+      const topCutMatches = await tx.select({ id: matches.id }).from(matches).where(eq(matches.roundId, activeRound.id))
+      if (topCutMatches.length === 1) {
+        const finalists = await tx.select().from(matchPlayers).where(eq(matchPlayers.matchId, topCutMatches[0].id))
+        const winner = finalists.find((player) => player.result === 'win' || player.result === 'bye')
+        if (winner) {
+          await tx.update(tournamentParticipants).set({ finalStanding: 1 }).where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, winner.userId)))
+          const runnerUp = finalists.find((player) => player.userId !== winner.userId)
+          if (runnerUp) await tx.update(tournamentParticipants).set({ finalStanding: 2 }).where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, runnerUp.userId)))
+        }
+        await tx.update(tournaments).set({ status: 'completed', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
+      } else {
+        await tx.update(tournaments).set({ status: 'top_cut', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
+      }
+    } else if (tournament && activeRound.roundNumber >= tournament.roundCount) {
       await tx.update(tournaments).set({ status: tournament.topCutSize ? 'top_cut' : 'completed', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
     }
     await tx.insert(auditEvents).values({
@@ -429,11 +593,62 @@ function resultForHeadToHead(players: MatchResultInput['players']) {
   return first.gamesWon > second.gamesWon ? ['win', 'loss'] as const : ['loss', 'win'] as const
 }
 
+async function applyRatingsForMatch(tx: DatabaseTransaction, matchId: string) {
+  const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).limit(1)
+  if (!match || match.ratingsAppliedAt || match.status !== 'complete') return
+  const [tournament] = await tx.select({ format: tournaments.format }).from(tournaments).where(eq(tournaments.id, match.tournamentId)).limit(1)
+  const players = await tx.select().from(matchPlayers).where(eq(matchPlayers.matchId, matchId)).orderBy(matchPlayers.seat)
+  if (!tournament || players.length < 2) {
+    await tx.update(matches).set({ ratingsAppliedAt: new Date() }).where(eq(matches.id, matchId))
+    return
+  }
+
+  const currentRatings = await tx.select().from(playerRatings).where(and(
+    eq(playerRatings.format, tournament.format),
+    inArray(playerRatings.userId, players.map((player) => player.userId)),
+  ))
+  const ratings = new Map(currentRatings.map((rating) => [rating.userId, rating]))
+  const ratingFor = (userId: string) => ratings.get(userId)?.rating ?? 1200
+
+  for (const player of players) {
+    const opponents = players.filter((opponent) => opponent.userId !== player.userId)
+    const expected = opponents.reduce((total, opponent) => total + 1 / (1 + 10 ** ((ratingFor(opponent.userId) - ratingFor(player.userId)) / 400)), 0) / opponents.length
+    const actual = opponents.reduce((total, opponent) => {
+      if (match.kind === 'commander_pod') return total + ((player.placement ?? 99) < (opponent.placement ?? 99) ? 1 : 0)
+      if (player.result === 'draw') return total + 0.5
+      return total + (player.result === 'win' ? 1 : 0)
+    }, 0) / opponents.length
+    const delta = Math.round(32 * (actual - expected))
+    const existing = ratings.get(player.userId)
+    const won = player.result === 'win' || (match.kind === 'commander_pod' && player.placement === 1)
+    const drawn = player.result === 'draw'
+    const lost = !won && !drawn
+    await tx.insert(playerRatings).values({
+      userId: player.userId,
+      format: tournament.format,
+      rating: (existing?.rating ?? 1200) + delta,
+      wins: (existing?.wins ?? 0) + Number(won),
+      losses: (existing?.losses ?? 0) + Number(lost),
+      draws: (existing?.draws ?? 0) + Number(drawn),
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [playerRatings.userId, playerRatings.format],
+      set: {
+        rating: (existing?.rating ?? 1200) + delta,
+        wins: (existing?.wins ?? 0) + Number(won),
+        losses: (existing?.losses ?? 0) + Number(lost),
+        draws: (existing?.draws ?? 0) + Number(drawn),
+        updatedAt: new Date(),
+      },
+    })
+  }
+  await tx.update(matches).set({ ratingsAppliedAt: new Date() }).where(eq(matches.id, matchId))
+}
+
 export async function reportMatchResult(matchId: string, userId: string, input: MatchResultInput) {
   if (input.players.some((player) => !Number.isInteger(player.gamesWon) || player.gamesWon < 0 || (player.gamesDrawn ?? 0) < 0)) {
     throw new Error('Scores must be non-negative whole numbers.')
   }
-
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${matchId}))`)
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).limit(1)
@@ -458,6 +673,8 @@ export async function reportMatchResult(matchId: string, userId: string, input: 
     const resultByPlayer = new Map<string, 'win' | 'loss' | 'draw' | 'placement'>()
     if (match.kind === 'head_to_head') {
       const results = resultForHeadToHead(input.players)
+      const [round] = await tx.select({ isTopCut: rounds.isTopCut }).from(rounds).where(eq(rounds.id, match.roundId)).limit(1)
+      if (round?.isTopCut && results[0] === 'draw') throw new Error('Top-cut matches must have a winner.')
       input.players.forEach((player, index) => resultByPlayer.set(player.userId, results[index]))
     } else {
       const placements = input.players.map((player) => player.placement)
@@ -487,6 +704,7 @@ export async function reportMatchResult(matchId: string, userId: string, input: 
       isAdminOverride: Boolean(organizer && !reporterIsPlayer),
       completedAt: organizer ? new Date() : null,
     }).where(eq(matches.id, matchId))
+    if (organizer) await applyRatingsForMatch(tx, matchId)
     await tx.insert(auditEvents).values({
       tournamentId: match.tournamentId,
       actorId: userId,
@@ -520,6 +738,7 @@ export async function confirmMatchResult(matchId: string, userId: string) {
     const isConfirmed = confirmations.length > 0 && confirmations.every((entry) => entry.confirmedAt)
     if (isConfirmed) {
       await tx.update(matches).set({ status: 'complete', completedAt: new Date() }).where(eq(matches.id, matchId))
+      await applyRatingsForMatch(tx, matchId)
       await tx.insert(auditEvents).values({
         tournamentId: match.tournamentId,
         actorId: userId,
@@ -543,11 +762,11 @@ export async function submitStandardDeckList(
       throw new Error('Deck registration is available only for Standard events.')
     }
     const [participant] = await tx
-      .select({ id: tournamentParticipants.id })
+      .select({ id: tournamentParticipants.id, status: tournamentParticipants.status })
       .from(tournamentParticipants)
       .where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, userId)))
       .limit(1)
-    if (!participant) throw new Error('Join this event before submitting a deck list.')
+    if (!participant || participant.status === 'waitlisted') throw new Error('Join this event before submitting a deck list.')
 
     const [existing] = await tx
       .select({ id: deckLists.id, status: deckLists.status })

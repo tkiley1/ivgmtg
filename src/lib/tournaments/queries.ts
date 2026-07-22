@@ -100,6 +100,7 @@ export async function getTournamentOverview(tournamentId: string, viewerId?: str
     .where(eq(tournamentOrganizers.tournamentId, tournamentId))
   const isOrganizer = Boolean(viewerId && organizers.some((organizer) => organizer.userId === viewerId))
   const isParticipant = Boolean(viewerId && participants.some((participant) => participant.userId === viewerId && participant.status !== 'dropped'))
+  const viewerParticipant = viewerId ? participants.find((participant) => participant.userId === viewerId) ?? null : null
   if (!tournament.isPublic && !isOrganizer && !isParticipant) return null
 
   const completed: CompletedMatch[] = eventMatches
@@ -132,6 +133,7 @@ export async function getTournamentOverview(tournamentId: string, viewerId?: str
     standings,
     isOrganizer,
     isParticipant,
+    viewerParticipant,
     viewerDeckList,
   }
 }

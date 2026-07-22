@@ -35,6 +35,7 @@ export const tournamentStatus = pgEnum('tournament_status', [
 ])
 export const participantStatus = pgEnum('participant_status', [
   'registered',
+  'waitlisted',
   'checked_in',
   'active',
   'dropped',
@@ -113,6 +114,22 @@ export const passwordResetTokens = pgTable(
   (table) => [
     uniqueIndex('password_reset_tokens_hash_unique').on(table.tokenHash),
     index('password_reset_tokens_user_id_idx').on(table.userId),
+  ],
+)
+
+export const emailVerificationTokens = pgTable(
+  'email_verification_tokens',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('email_verification_tokens_hash_unique').on(table.tokenHash),
+    index('email_verification_tokens_user_id_idx').on(table.userId),
   ],
 )
 
@@ -218,6 +235,7 @@ export const matches = pgTable(
     isAdminOverride: boolean('is_admin_override').default(false).notNull(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    ratingsAppliedAt: timestamp('ratings_applied_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

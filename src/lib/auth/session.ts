@@ -15,6 +15,7 @@ function hashToken(token: string) {
 export type CurrentUser = {
   id: string
   email: string
+  emailVerifiedAt: Date | null
   username: string
   displayName: string
   avatarUrl: string | null
@@ -28,6 +29,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     .select({
       id: users.id,
       email: users.email,
+      emailVerifiedAt: users.emailVerifiedAt,
       username: profiles.username,
       displayName: profiles.displayName,
       avatarUrl: profiles.avatarUrl,

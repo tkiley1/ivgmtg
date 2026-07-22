@@ -15,6 +15,20 @@
       "when": 1784669159056,
       "tag": "0001_wonderful_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784679968111,
+      "tag": "0002_clear_hawkeye",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784680391740,
+      "tag": "0003_salty_microbe",
+      "breakpoints": true
     }
   ]
 }

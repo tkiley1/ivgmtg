@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { requireCurrentUser } from '@/lib/auth/session'
+import { ResendVerificationForm } from '@/components/AuthStatusForm'
 import { listPublicTournaments } from '@/lib/tournaments/queries'
 import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
 
@@ -11,6 +12,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      {!user.emailVerifiedAt && <section className="mb-6 flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-warning">Verify your email address</p><p className="text-sm text-muted">Account recovery and organizer communications depend on a verified address.</p></div><ResendVerificationForm compact /></section>}
       <section className="flex flex-col sm:flex-row sm:items-end justify-between gap-5 mb-10">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Welcome back, {user.username}</p>
