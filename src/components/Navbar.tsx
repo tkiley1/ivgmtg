@@ -39,6 +39,7 @@ export async function Navbar() {
             >
               Create
             </Link>
+            <Link href="/decks" className="text-sm text-muted hover:text-foreground transition-colors">Decks</Link>
               </>
             ) : (
               <Link href="/tournaments" className="text-sm text-muted hover:text-foreground transition-colors">

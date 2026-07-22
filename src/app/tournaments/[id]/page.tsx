@@ -4,7 +4,7 @@ import { JoinPublicTournamentButton } from '@/components/JoinPublicTournamentBut
 import { StandardDeckRegistration } from '@/components/StandardDeckRegistration'
 import { TournamentCheckInButton } from '@/components/TournamentCheckInButton'
 import { getCurrentUser } from '@/lib/auth/session'
-import { getTournamentOverview } from '@/lib/tournaments/queries'
+import { getTournamentOverview, listUserStandardDecks } from '@/lib/tournaments/queries'
 import { displayStatus, formatDateTime, statusBadgeClass } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +19,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
   const activeMatches = activeRound ? matches.filter((match) => match.roundId === activeRound.id) : []
   const registered = participants.filter((participant) => !['dropped', 'disqualified', 'waitlisted'].includes(participant.status))
   const waitlisted = participants.filter((participant) => participant.status === 'waitlisted')
+  const libraryDecks = user && tournament.format === 'standard' && viewerParticipant?.status !== 'waitlisted' ? await listUserStandardDecks(user.id) : []
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-7">
@@ -70,8 +71,8 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
         </section>
       )}
 
-      {tournament.format === 'standard' && user && isParticipant && (
-        <StandardDeckRegistration tournamentId={id} required={tournament.deckListsRequired} existing={viewerDeckList} />
+      {tournament.format === 'standard' && user && isParticipant && viewerParticipant?.status !== 'waitlisted' && (
+        <StandardDeckRegistration tournamentId={id} required={tournament.deckListsRequired} existing={viewerDeckList} libraryDecks={libraryDecks} />
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-7">

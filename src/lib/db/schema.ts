@@ -265,12 +265,30 @@ export const matchPlayers = pgTable(
   ],
 )
 
+export const userDecks = pgTable(
+  'user_decks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    format: tournamentFormat('format').notNull(),
+    name: varchar('name', { length: 120 }).notNull(),
+    listText: text('list_text').notNull(),
+    isPublic: boolean('is_public').default(false).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index('user_decks_owner_format_idx').on(table.userId, table.format),
+    index('user_decks_public_profile_idx').on(table.userId, table.isPublic, table.updatedAt),
+  ],
+)
+
 export const deckLists = pgTable(
   'deck_lists',
   {
     id: uuid('id').defaultRandom().primaryKey(),
     tournamentId: uuid('tournament_id').notNull().references(() => tournaments.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    sourceDeckId: uuid('source_deck_id').references(() => userDecks.id, { onDelete: 'set null' }),
     name: varchar('name', { length: 120 }),
     commanderName: varchar('commander_name', { length: 120 }),
     listText: text('list_text'),

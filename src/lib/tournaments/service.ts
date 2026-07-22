@@ -12,6 +12,7 @@ import {
   tournamentOrganizers,
   tournamentParticipants,
   tournaments,
+  userDecks,
 } from '@/lib/db/schema'
 import { validateStandardArenaDecklist } from '@/lib/decks/arena'
 import { createCommanderPodPairings, createSwissPairings, type PairingPlayer } from './pairing'
@@ -753,9 +754,8 @@ export async function confirmMatchResult(matchId: string, userId: string) {
 export async function submitStandardDeckList(
   tournamentId: string,
   userId: string,
-  input: { name: string; listText: string },
+  input: { name?: string; listText?: string; sourceDeckId?: string },
 ) {
-  const parsed = validateStandardArenaDecklist(input.listText)
   return getDb().transaction(async (tx) => {
     const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
     if (!tournament || tournament.format !== 'standard') {
@@ -767,6 +767,15 @@ export async function submitStandardDeckList(
       .where(and(eq(tournamentParticipants.tournamentId, tournamentId), eq(tournamentParticipants.userId, userId)))
       .limit(1)
     if (!participant || participant.status === 'waitlisted') throw new Error('Join this event before submitting a deck list.')
+
+    const sourceDeck = input.sourceDeckId
+      ? (await tx.select().from(userDecks).where(and(eq(userDecks.id, input.sourceDeckId), eq(userDecks.userId, userId), eq(userDecks.format, 'standard'))).limit(1))[0]
+      : null
+    if (input.sourceDeckId && !sourceDeck) throw new Error('That saved deck is no longer available.')
+    const name = sourceDeck?.name ?? input.name?.trim()
+    const listText = sourceDeck?.listText ?? input.listText?.trim()
+    if (!name || !listText) throw new Error('Provide a deck name and MTG Arena export.')
+    const parsed = validateStandardArenaDecklist(listText)
 
     const [existing] = await tx
       .select({ id: deckLists.id, status: deckLists.status })
@@ -781,8 +790,9 @@ export async function submitStandardDeckList(
       .values({
         tournamentId,
         userId,
-        name: input.name,
-        listText: input.listText.trim(),
+        sourceDeckId: sourceDeck?.id ?? null,
+        name,
+        listText,
         status: 'submitted',
         submittedAt: now,
         updatedAt: now,
@@ -790,8 +800,9 @@ export async function submitStandardDeckList(
       .onConflictDoUpdate({
         target: [deckLists.tournamentId, deckLists.userId],
         set: {
-          name: input.name,
-          listText: input.listText.trim(),
+          sourceDeckId: sourceDeck?.id ?? null,
+          name,
+          listText,
           status: 'submitted',
           submittedAt: now,
           updatedAt: now,

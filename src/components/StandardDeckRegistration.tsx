@@ -9,12 +9,15 @@ export function StandardDeckRegistration({
   tournamentId,
   required,
   existing,
+  libraryDecks,
 }: {
   tournamentId: string
   required: boolean
   existing: { name: string | null; listText: string | null; status: string } | null
+  libraryDecks: Array<{ id: string; name: string; isPublic: boolean }>
 }) {
   const [state, formAction, pending] = useActionState(submitStandardDeckListAction, initialState)
+  const [libraryState, libraryAction, libraryPending] = useActionState(submitStandardDeckListAction, initialState)
   const [listText, setListText] = useState(existing?.listText ?? '')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -31,6 +34,8 @@ export function StandardDeckRegistration({
         <span className={`badge ${required ? 'badge-standard' : 'badge-scheduled'}`}>{required ? 'required' : 'optional'}</span>
       </div>
       <p className="text-sm text-muted mb-4">Paste the text from MTG Arena’s Export command or upload its .txt file. The validator requires a <code>Deck</code> section with at least 60 cards and permits up to 15 sideboard cards.</p>
+      {libraryDecks.length > 0 && <form action={libraryAction} className="mb-5 rounded-lg border border-accent/30 bg-accent/5 p-4"><input type="hidden" name="tournamentId" value={tournamentId} /><label htmlFor="savedDeck" className="mb-1 block text-sm font-medium">Use a saved Standard deck</label><div className="flex flex-col gap-3 sm:flex-row"><select id="savedDeck" name="sourceDeckId" className="input flex-1" defaultValue=""><option value="" disabled>Select a deck…</option>{libraryDecks.map((deck) => <option key={deck.id} value={deck.id}>{deck.name}{deck.isPublic ? ' · public' : ''}</option>)}</select><button type="submit" disabled={libraryPending} className="btn-secondary">{libraryPending ? 'Selecting…' : 'Use saved deck'}</button></div>{libraryState.error && <p role="alert" className="mt-2 text-sm text-danger">{libraryState.error}</p>}</form>}
+      {libraryDecks.length > 0 && <p className="mb-4 text-sm font-medium text-muted">Or submit a different deck for this event</p>}
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="tournamentId" value={tournamentId} />
         <div><label htmlFor="deckName" className="block text-sm text-muted mb-1">Deck name</label><input id="deckName" name="name" className="input" defaultValue={existing?.name ?? ''} maxLength={120} required placeholder="Azorius Control" /></div>

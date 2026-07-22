@@ -240,8 +240,9 @@ export async function confirmMatchAction(_: TournamentActionState, formData: For
 
 const deckListSchema = z.object({
   tournamentId: z.string().uuid(),
-  name: z.string().trim().min(1, 'Give this deck a name.').max(120),
-  listText: z.string().trim().min(1, 'Paste an MTG Arena deck export or upload its .txt file.').max(20_000),
+  name: z.string().trim().min(1, 'Give this deck a name.').max(120).optional(),
+  listText: z.string().trim().min(1, 'Paste an MTG Arena deck export or upload its .txt file.').max(20_000).optional(),
+  sourceDeckId: z.string().uuid().optional(),
 })
 
 export async function submitStandardDeckListAction(_: TournamentActionState, formData: FormData): Promise<TournamentActionState> {
@@ -249,10 +250,7 @@ export async function submitStandardDeckListAction(_: TournamentActionState, for
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the deck list and try again.' }
   try {
     const user = await requireCurrentUser()
-    await submitStandardDeckList(parsed.data.tournamentId, user.id, {
-      name: parsed.data.name,
-      listText: parsed.data.listText,
-    })
+    await submitStandardDeckList(parsed.data.tournamentId, user.id, parsed.data)
     refreshTournament(parsed.data.tournamentId)
     return {}
   } catch (error) {

@@ -9,6 +9,7 @@ import {
   tournamentOrganizers,
   tournamentParticipants,
   tournaments,
+  userDecks,
 } from '@/lib/db/schema'
 import { calculateStandings, type CompletedMatch } from './standings'
 
@@ -38,6 +39,22 @@ export async function listUserTournaments(userId: string) {
       .orderBy(desc(tournaments.updatedAt)),
   ])
   return { playing, organizing }
+}
+
+export async function listUserStandardDecks(userId: string) {
+  return getDb()
+    .select()
+    .from(userDecks)
+    .where(and(eq(userDecks.userId, userId), eq(userDecks.format, 'standard')))
+    .orderBy(desc(userDecks.updatedAt))
+}
+
+export async function listPublicProfileDecks(userId: string) {
+  return getDb()
+    .select()
+    .from(userDecks)
+    .where(and(eq(userDecks.userId, userId), eq(userDecks.format, 'standard'), eq(userDecks.isPublic, true)))
+    .orderBy(desc(userDecks.updatedAt))
 }
 
 export async function getTournamentOverview(tournamentId: string, viewerId?: string) {
