@@ -1,16 +1,30 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { Pool } from 'pg'
+import { Pool, type PoolConfig } from 'pg'
 import * as schema from './schema'
 
 const globalForDatabase = globalThis as unknown as {
   pool: Pool | undefined
 }
 
-const pool = globalForDatabase.pool ?? new Pool({
-  connectionString: process.env.DATABASE_URL,
+const connectionUrl = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : undefined
+const poolConfig: PoolConfig = {
+  connectionString: connectionUrl?.toString(),
   max: Number(process.env.DATABASE_POOL_MAX ?? 5),
   idleTimeoutMillis: 30_000,
-})
+}
+
+// Astroscale's private RDS endpoint uses a platform-issued certificate that is
+// not in Node's default trust store. This connection stays on the private
+// app-to-database network, so retain TLS and trust that certificate.
+if (connectionUrl?.hostname.endsWith('.rds.amazonaws.com')) {
+  for (const key of ['ssl', 'sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat']) {
+    connectionUrl.searchParams.delete(key)
+  }
+  poolConfig.connectionString = connectionUrl.toString()
+  poolConfig.ssl = { rejectUnauthorized: false }
+}
+
+const pool = globalForDatabase.pool ?? new Pool(poolConfig)
 
 if (process.env.NODE_ENV !== 'production') globalForDatabase.pool = pool
 
