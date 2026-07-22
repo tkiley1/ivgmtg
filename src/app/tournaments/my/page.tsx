@@ -11,10 +11,7 @@ export default async function MyTournamentsPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-10">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Player profile</p>
-        <h1 className="text-3xl font-bold mt-2">Your events</h1>
-      </div>
+      <div className="hero-surface rise-in"><p className="page-eyebrow">Player profile</p><h1 className="page-heading">Your events</h1><p className="page-subtitle">One place to manage the events you&apos;re organizing and the tables you&apos;re joining.</p></div>
       <EventSection title="Playing" empty="You have not joined an event yet." events={playing.map((entry) => ({ ...entry.tournament, detail: entry.participantStatus }))} />
       <EventSection title="Organizing" empty="You are not organizing any events yet." events={organizing.map((entry) => ({ ...entry.tournament, detail: entry.role }))} organizer />
     </div>
@@ -40,7 +37,7 @@ function EventSection({
       ) : (
         <div className="space-y-3">
           {events.map((event) => (
-            <div key={event.id} className="card flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+            <div key={event.id} className="card interactive-card flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
               <Link href={`/tournaments/${event.id}`} className="min-w-0">
                 <div className="flex flex-wrap gap-2 mb-2"><span className={`badge badge-${event.format}`}>{event.format}</span><span className={`badge ${statusBadgeClass(event.status)}`}>{displayStatus(event.status)}</span></div>
                 <h3 className="font-bold text-lg truncate">{event.name}</h3>
