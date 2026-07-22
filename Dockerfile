@@ -5,6 +5,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+FROM deps AS production-deps
+RUN npm prune --omit=dev
+
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -21,6 +24,7 @@ COPY --from=builder --chown=65534:65534 /app/.next/standalone ./
 COPY --from=builder --chown=65534:65534 /app/.next/static ./.next/static
 COPY --from=builder --chown=65534:65534 /app/drizzle ./drizzle
 COPY --from=builder --chown=65534:65534 /app/scripts ./scripts
+COPY --from=production-deps --chown=65534:65534 /app/node_modules ./node_modules
 USER 65534:65534
 EXPOSE 3000
 ENV PORT=3000
