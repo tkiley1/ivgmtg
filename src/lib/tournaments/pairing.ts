@@ -1,5 +1,5 @@
 export type PairingPlayer = {
-  userId: string
+  participantId: string
   matchPoints: number
   gameWinPercentage?: number
   rating: number
@@ -9,7 +9,7 @@ export type PairingPlayer = {
 
 export type ProposedPairing = {
   kind: 'head_to_head' | 'commander_pod' | 'bye'
-  playerIds: string[]
+  participantIds: string[]
 }
 
 function rankedPlayers(players: readonly PairingPlayer[]) {
@@ -17,7 +17,7 @@ function rankedPlayers(players: readonly PairingPlayer[]) {
     right.matchPoints - left.matchPoints ||
     (right.gameWinPercentage ?? 0) - (left.gameWinPercentage ?? 0) ||
     right.rating - left.rating ||
-    left.userId.localeCompare(right.userId),
+    left.participantId.localeCompare(right.participantId),
   )
 }
 
@@ -36,7 +36,7 @@ export function createSwissPairings(players: readonly PairingPlayer[]): Proposed
       .findIndex((player) => !player.hasReceivedBye)
     const index = byeIndex === -1 ? remaining.length - 1 : remaining.length - 1 - byeIndex
     const [byePlayer] = remaining.splice(index, 1)
-    pairings.push({ kind: 'bye', playerIds: [byePlayer.userId] })
+    pairings.push({ kind: 'bye', participantIds: [byePlayer.participantId] })
   }
 
   while (remaining.length) {
@@ -47,7 +47,7 @@ export function createSwissPairings(players: readonly PairingPlayer[]): Proposed
     let bestPenalty = Number.POSITIVE_INFINITY
     for (let index = 0; index < remaining.length; index += 1) {
       const candidate = remaining[index]
-      const rematchPenalty = player.opponentIds.has(candidate.userId) ? 1_000_000 : 0
+      const rematchPenalty = player.opponentIds.has(candidate.participantId) ? 1_000_000 : 0
       const scorePenalty = Math.abs(player.matchPoints - candidate.matchPoints) * 10_000
       const ratingPenalty = Math.abs(player.rating - candidate.rating)
       const penalty = rematchPenalty + scorePenalty + ratingPenalty
@@ -58,7 +58,7 @@ export function createSwissPairings(players: readonly PairingPlayer[]): Proposed
     }
 
     const [opponent] = remaining.splice(candidateIndex, 1)
-    pairings.push({ kind: 'head_to_head', playerIds: [player.userId, opponent.userId] })
+    pairings.push({ kind: 'head_to_head', participantIds: [player.participantId, opponent.participantId] })
   }
 
   return pairings
@@ -99,7 +99,7 @@ export function createCommanderPodPairings(
   preferredSize: 3 | 4,
 ): ProposedPairing[] {
   if (players.length < 3) {
-    return rankedPlayers(players).map((player) => ({ kind: 'bye', playerIds: [player.userId] }))
+    return rankedPlayers(players).map((player) => ({ kind: 'bye', participantIds: [player.participantId] }))
   }
 
   const plan = podSizesFor(players.length, preferredSize)
@@ -114,7 +114,7 @@ export function createCommanderPodPairings(
       let bestPenalty = Number.POSITIVE_INFINITY
       for (let index = 0; index < remaining.length; index += 1) {
         const candidate = remaining[index]
-        const priorOpponents = pod.filter((member) => member.opponentIds.has(candidate.userId)).length
+        const priorOpponents = pod.filter((member) => member.opponentIds.has(candidate.participantId)).length
         const scoreDistance = pod.reduce((total, member) => total + Math.abs(member.matchPoints - candidate.matchPoints), 0)
         const penalty = priorOpponents * 1_000_000 + scoreDistance * 10_000 + index
         if (penalty < bestPenalty) {
@@ -125,13 +125,13 @@ export function createCommanderPodPairings(
       const [nextPlayer] = remaining.splice(bestIndex, 1)
       pod.push(nextPlayer)
     }
-    pairings.push({ kind: 'commander_pod', playerIds: pod.map((player) => player.userId) })
+    pairings.push({ kind: 'commander_pod', participantIds: pod.map((player) => player.participantId) })
   }
 
   if (plan.byes) {
     const byeIndex = [...remaining].reverse().findIndex((player) => !player.hasReceivedBye)
     const [byePlayer] = remaining.splice(byeIndex === -1 ? remaining.length - 1 : remaining.length - 1 - byeIndex, 1)
-    pairings.push({ kind: 'bye', playerIds: [byePlayer.userId] })
+    pairings.push({ kind: 'bye', participantIds: [byePlayer.participantId] })
   }
 
   return pairings

@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -11,6 +12,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -58,6 +60,13 @@ export const matchPlayerResult = pgEnum('match_player_result', [
 ])
 export const organizerRole = pgEnum('organizer_role', ['owner', 'organizer', 'judge'])
 export const deckListStatus = pgEnum('deck_list_status', ['draft', 'submitted', 'locked'])
+export const draftStatus = pgEnum('draft_status', [
+  'not_started',
+  'seating',
+  'drafting',
+  'deck_building',
+  'complete',
+])
 
 export const users = pgTable(
   'users',
@@ -158,6 +167,13 @@ export const tournaments = pgTable(
     roundTimeLimitMinutes: integer('round_time_limit_minutes').default(50).notNull(),
     topCutSize: integer('top_cut_size'),
     deckListsRequired: boolean('deck_lists_required').default(false).notNull(),
+    draftStatus: draftStatus('draft_status').default('not_started').notNull(),
+    draftPack: integer('draft_pack').default(0).notNull(),
+    draftPick: integer('draft_pick').default(0).notNull(),
+    draftPickTimeSeconds: integer('draft_pick_time_seconds').default(45).notNull(),
+    draftPicksPerPack: integer('draft_picks_per_pack').default(14).notNull(),
+    deckBuildingTimeMinutes: integer('deck_building_time_minutes').default(30).notNull(),
+    draftStepEndsAt: timestamp('draft_step_ends_at', { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
@@ -165,6 +181,13 @@ export const tournaments = pgTable(
     uniqueIndex('tournaments_invite_token_unique').on(table.inviteToken),
     index('tournaments_discovery_idx').on(table.isPublic, table.status, table.scheduledAt),
     index('tournaments_owner_idx').on(table.ownerId),
+    check('tournaments_draft_timing_check', sql`
+      ${table.draftPack} BETWEEN 0 AND 3
+      AND ${table.draftPick} BETWEEN 0 AND 30
+      AND ${table.draftPickTimeSeconds} BETWEEN 10 AND 300
+      AND ${table.draftPicksPerPack} BETWEEN 1 AND 30
+      AND ${table.deckBuildingTimeMinutes} BETWEEN 5 AND 120
+    `),
   ],
 )
 
@@ -188,7 +211,8 @@ export const tournamentParticipants = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     tournamentId: uuid('tournament_id').notNull().references(() => tournaments.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    guestName: varchar('guest_name', { length: 80 }),
     status: participantStatus('status').default('registered').notNull(),
     seedRating: integer('seed_rating').default(1200).notNull(),
     finalStanding: integer('final_standing'),
@@ -200,6 +224,10 @@ export const tournamentParticipants = pgTable(
     uniqueIndex('tournament_participants_unique').on(table.tournamentId, table.userId),
     index('tournament_participants_tournament_idx').on(table.tournamentId, table.status),
     index('tournament_participants_user_idx').on(table.userId),
+    check('tournament_participants_identity_check', sql`
+      (${table.userId} IS NOT NULL AND ${table.guestName} IS NULL)
+      OR (${table.userId} IS NULL AND ${table.guestName} IS NOT NULL AND length(trim(${table.guestName})) > 0)
+    `),
   ],
 )
 
@@ -249,7 +277,8 @@ export const matchPlayers = pgTable(
   {
     id: uuid('id').defaultRandom().primaryKey(),
     matchId: uuid('match_id').notNull().references(() => matches.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').notNull().references(() => users.id),
+    participantId: uuid('participant_id').notNull().references(() => tournamentParticipants.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => users.id),
     seat: integer('seat').notNull(),
     result: matchPlayerResult('result'),
     placement: integer('placement'),
@@ -259,9 +288,61 @@ export const matchPlayers = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
-    uniqueIndex('match_players_match_user_unique').on(table.matchId, table.userId),
+    uniqueIndex('match_players_match_participant_unique').on(table.matchId, table.participantId),
     uniqueIndex('match_players_match_seat_unique').on(table.matchId, table.seat),
+    index('match_players_participant_idx').on(table.participantId),
     index('match_players_user_idx').on(table.userId),
+  ],
+)
+
+export const draftPods = pgTable(
+  'draft_pods',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tournamentId: uuid('tournament_id').notNull().references(() => tournaments.id, { onDelete: 'cascade' }),
+    podNumber: integer('pod_number').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('draft_pods_tournament_number_unique').on(table.tournamentId, table.podNumber),
+    index('draft_pods_tournament_idx').on(table.tournamentId),
+    check('draft_pods_number_check', sql`${table.podNumber} > 0`),
+  ],
+)
+
+export const draftPodSeats = pgTable(
+  'draft_pod_seats',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    podId: uuid('pod_id').notNull().references(() => draftPods.id, { onDelete: 'cascade' }),
+    participantId: uuid('participant_id').notNull().references(() => tournamentParticipants.id, { onDelete: 'cascade' }),
+    seat: integer('seat').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('draft_pod_seats_pod_seat_unique').on(table.podId, table.seat),
+    uniqueIndex('draft_pod_seats_participant_unique').on(table.participantId),
+    index('draft_pod_seats_pod_idx').on(table.podId),
+    check('draft_pod_seats_number_check', sql`${table.seat} > 0`),
+  ],
+)
+
+export const matchRatingAdjustments = pgTable(
+  'match_rating_adjustments',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    matchId: uuid('match_id').notNull().references(() => matches.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    format: tournamentFormat('format').notNull(),
+    ratingDelta: integer('rating_delta').notNull(),
+    winsDelta: integer('wins_delta').default(0).notNull(),
+    lossesDelta: integer('losses_delta').default(0).notNull(),
+    drawsDelta: integer('draws_delta').default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('match_rating_adjustments_match_user_unique').on(table.matchId, table.userId),
+    index('match_rating_adjustments_match_idx').on(table.matchId),
   ],
 )
 

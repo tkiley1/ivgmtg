@@ -11,13 +11,13 @@ export function RoundTimer({ endsAt }: { endsAt: string | null }) {
     const update = () => {
       const diff = new Date(endsAt).getTime() - Date.now()
       setRemainingMs(diff)
-      if (diff <= 0) {
-        return
-      }
+      return diff <= 0
     }
 
-    update()
-    const interval = setInterval(update, 1000)
+    if (update()) return
+    const interval = setInterval(() => {
+      if (update()) clearInterval(interval)
+    }, 1000)
     return () => clearInterval(interval)
   }, [endsAt])
 

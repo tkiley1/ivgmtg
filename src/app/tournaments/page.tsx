@@ -34,7 +34,7 @@ export default async function TournamentsPage() {
               <div className="event-card__footer text-xs text-muted grid grid-cols-2 gap-2">
                 <span>{event.roundCount} Swiss rounds</span>
                 <span>{event.venue || 'Online / venue TBA'}</span>
-                {event.scheduledAt && <span className="col-span-2">{formatDateTime(event.scheduledAt)}</span>}
+                {event.scheduledAt && <span className="col-span-2">{formatDateTime(event.scheduledAt, event.timezone)}</span>}
               </div>
             </Link>
           ))}

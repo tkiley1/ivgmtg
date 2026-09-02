@@ -12,9 +12,21 @@ InvadersMTG is a Magic: The Gathering tournament platform for organizers and pla
 Useful checks:
 
 ```bash
+npm test
 npm run lint
 npm run build
 ```
+
+## Running a physical Booster Draft
+
+1. Create a Draft event, then use **Organizer controls → Event settings** to confirm the start time, capacity, rounds, pick timer, picks per pack, and deck-building timer.
+2. Have account players join and check in. Add accountless players from **Participant list → Add walk-in**.
+3. Generate randomized pod seating on the event page. You may reseat until the draft starts.
+4. Start pack one and advance the shared pick timer as each pick completes. Pack one passes left, pack two right, and pack three left.
+5. Finish deck building, then generate round one. Pairings and timers refresh automatically on open event screens.
+6. Players report results from their match page. An organizer can confirm guest-player matches, correct finalized results, swap players before results are reported, or reset an untouched active round.
+
+If you are not using the in-app draft timer, choose **Skip draft workflow** before generating round one.
 
 ## Database and migrations
 

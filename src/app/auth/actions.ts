@@ -233,7 +233,9 @@ export async function verifyEmailAction(_: AuthActionState, formData: FormData):
   redirect('/dashboard?verified=1')
 }
 
-export async function resendVerificationAction(_: AuthActionState, _formData: FormData): Promise<AuthActionState> {
+export async function resendVerificationAction(previousState: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  void previousState
+  void formData
   const user = await requireCurrentUser()
   const [account] = await getDb()
     .select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt })

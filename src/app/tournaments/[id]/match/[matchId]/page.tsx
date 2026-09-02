@@ -20,8 +20,8 @@ export default async function MatchPage({ params }: { params: Promise<{ id: stri
       <section className="card mt-5">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Table {match.tableNumber ?? '—'}</p>
         <h1 className="text-3xl font-bold mt-2">{match.kind === 'commander_pod' ? 'Commander pod' : 'Match result'}</h1>
-        <div className="my-7 space-y-3">{match.players.map((player) => <div key={player.userId} className="rounded-lg border border-border bg-background/40 p-4 flex justify-between"><span className="font-medium">{player.displayName}</span><span className="text-muted">@{player.username}</span></div>)}</div>
-        <MatchResultForm tournamentId={id} matchId={matchId} kind={match.kind} players={match.players} canReport={Boolean(user && (isPlayer || overview.isOrganizer))} status={match.status} />
+        <div className="my-7 space-y-3">{match.players.map((player) => <div key={player.participantId} className="rounded-lg border border-border bg-background/40 p-4 flex justify-between"><span className="font-medium">{player.displayName}</span><span className="text-muted">{player.username ? `@${player.username}` : 'Walk-in'}</span></div>)}</div>
+        <MatchResultForm tournamentId={id} matchId={matchId} kind={match.kind} players={match.players} canReport={Boolean(user && (isPlayer || overview.isOrganizer) && match.status !== 'complete')} canCorrect={Boolean(user && overview.isOrganizer)} status={match.status} />
       </section>
     </div>
   )

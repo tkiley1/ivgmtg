@@ -5,6 +5,7 @@ import {
   completeRoundAction,
   openCheckInAction,
   promoteWaitlistAction,
+  resetActiveRoundAction,
   startRoundAction,
   type TournamentActionState,
 } from '@/app/tournaments/actions'
@@ -30,7 +31,11 @@ export function OrganizerRoundControls({
   const [completeState, completeAction, completePending] = useActionState(completeRoundAction, initialState)
   const [checkInState, checkInAction, checkInPending] = useActionState(openCheckInAction, initialState)
   const [waitlistState, waitlistAction, waitlistPending] = useActionState(promoteWaitlistAction, initialState)
-  const canStart = !hasActiveRound && (completedRounds < roundCount || status === 'top_cut')
+  const [resetState, resetAction, resetPending] = useActionState(resetActiveRoundAction, initialState)
+  const canStart = !hasActiveRound && (
+    (['registration', 'check_in', 'active'].includes(status) && completedRounds < roundCount) ||
+    status === 'top_cut'
+  )
 
   return (
     <div className="space-y-3">
@@ -39,8 +44,9 @@ export function OrganizerRoundControls({
         {hasWaitlist && <form action={waitlistAction}><input type="hidden" name="tournamentId" value={tournamentId} /><button disabled={waitlistPending} className="btn-secondary">{waitlistPending ? 'Promoting…' : 'Promote waitlist'}</button></form>}
         {canStart && <form action={startAction}><input type="hidden" name="tournamentId" value={tournamentId} /><button disabled={startPending} className="btn-primary">{startPending ? 'Generating…' : `Start round ${completedRounds + 1}`}</button></form>}
         {hasActiveRound && <form action={completeAction}><input type="hidden" name="tournamentId" value={tournamentId} /><button disabled={completePending} className="btn-secondary">{completePending ? 'Completing…' : 'Complete active round'}</button></form>}
+        {hasActiveRound && <form action={resetAction} onSubmit={(event) => { if (!window.confirm('Reset this round and discard its pairings? This is allowed only before results are reported.')) event.preventDefault() }}><input type="hidden" name="tournamentId" value={tournamentId} /><button disabled={resetPending} className="text-sm text-danger hover:underline">{resetPending ? 'Resetting…' : 'Reset round'}</button></form>}
       </div>
-      {(startState.error || completeState.error || checkInState.error || waitlistState.error) && <p role="alert" className="text-sm text-danger">{startState.error || completeState.error || checkInState.error || waitlistState.error}</p>}
+      {(startState.error || completeState.error || checkInState.error || waitlistState.error || resetState.error) && <p role="alert" className="text-sm text-danger">{startState.error || completeState.error || checkInState.error || waitlistState.error || resetState.error}</p>}
       {hasActiveRound && <p className="text-sm text-muted">The round can close once every score is confirmed or an organizer overrides the remaining result.</p>}
     </div>
   )

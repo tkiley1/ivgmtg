@@ -45,7 +45,7 @@ export default async function DashboardPage() {
                 <div className="event-card__footer text-xs text-muted flex flex-wrap gap-x-4 gap-y-1">
                   <span>{event.roundCount} rounds</span>
                   <span>{event.format === 'commander' && event.commanderMode === 'pods' ? `${event.podSize}-player pods` : `Best of ${event.gamesPerMatch}`}</span>
-                  {event.scheduledAt && <span>{formatDateTime(event.scheduledAt)}</span>}
+                  {event.scheduledAt && <span>{formatDateTime(event.scheduledAt, event.timezone)}</span>}
                 </div>
               </Link>
             ))}

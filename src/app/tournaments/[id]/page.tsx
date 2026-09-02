@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { JoinPublicTournamentButton } from '@/components/JoinPublicTournamentButton'
+import { DraftWorkspace } from '@/components/DraftWorkspace'
+import { LiveTournamentRefresh } from '@/components/LiveTournamentRefresh'
+import { RoundTimer } from '@/components/RoundTimer'
 import { StandardDeckRegistration } from '@/components/StandardDeckRegistration'
 import { TournamentCheckInButton } from '@/components/TournamentCheckInButton'
 import { getCurrentUser } from '@/lib/auth/session'
@@ -14,7 +17,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
   const user = await getCurrentUser()
   const overview = await getTournamentOverview(id, user?.id)
   if (!overview) notFound()
-  const { tournament, participants, rounds, matches, standings, isOrganizer, isParticipant, viewerParticipant, viewerDeckList } = overview
+  const { tournament, participants, rounds, matches, standings, draftPods, isOrganizer, isParticipant, viewerParticipant, viewerDeckList } = overview
   const activeRound = rounds.find((round) => round.status === 'active')
   const activeMatches = activeRound ? matches.filter((match) => match.roundId === activeRound.id) : []
   const registered = participants.filter((participant) => !['dropped', 'disqualified', 'waitlisted'].includes(participant.status))
@@ -23,6 +26,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-7">
+      <LiveTournamentRefresh enabled={Boolean(activeRound || tournament.draftStatus === 'drafting' || tournament.draftStatus === 'deck_building')} />
       <section className="card overflow-hidden relative">
         <div className="absolute right-0 top-0 w-48 h-48 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-6">
@@ -38,12 +42,13 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
               <span>{registered.length}{tournament.capacity ? ` / ${tournament.capacity}` : ''} players{waitlisted.length ? ` · ${waitlisted.length} waitlisted` : ''}</span>
               <span>{tournament.roundCount} Swiss rounds</span>
               <span>{tournament.format === 'commander' && tournament.commanderMode === 'pods' ? `${tournament.podSize}-player tables` : `Best of ${tournament.gamesPerMatch}`}</span>
-              {tournament.scheduledAt && <span>{formatDateTime(tournament.scheduledAt)}</span>}
+              {tournament.scheduledAt && <span>{formatDateTime(tournament.scheduledAt, tournament.timezone)}</span>}
             </div>
           </div>
           <div className="flex flex-wrap gap-3 shrink-0">
             {isOrganizer && <Link href={`/tournaments/${id}/manage`} className="btn-primary">Organizer controls</Link>}
-            {!isParticipant && tournament.status === 'registration' && (user ? <JoinPublicTournamentButton tournamentId={id} /> : <Link href={`/auth/login?redirect=/tournaments/${id}`} className="btn-primary">Sign in to join</Link>)}
+            {!isParticipant && tournament.status === 'registration' && tournament.isPublic && (user ? <JoinPublicTournamentButton tournamentId={id} /> : <Link href={`/auth/login?redirect=/tournaments/${id}`} className="btn-primary">Sign in to join</Link>)}
+            {!isParticipant && isOrganizer && tournament.status === 'registration' && !tournament.isPublic && <Link href="/tournaments/join" className="btn-secondary">Join with access key</Link>}
             {viewerParticipant?.status === 'registered' && <span className="btn-secondary cursor-default">You&apos;re registered</span>}
             {viewerParticipant?.status === 'checked_in' && <span className="btn-secondary cursor-default">You&apos;re checked in</span>}
             {viewerParticipant?.status === 'waitlisted' && <span className="btn-secondary cursor-default">You&apos;re waitlisted</span>}
@@ -52,18 +57,20 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
         </div>
       </section>
 
+      {tournament.format === 'draft' && <DraftWorkspace tournamentId={id} status={tournament.draftStatus} pack={tournament.draftPack} pick={tournament.draftPick} picksPerPack={tournament.draftPicksPerPack} endsAt={tournament.draftStepEndsAt?.toISOString() ?? null} pods={draftPods} isOrganizer={isOrganizer} />}
+
       {activeRound && (
         <section className="card">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
             <div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Now playing</p><h2 className="text-2xl font-bold mt-1">Round {activeRound.roundNumber}</h2></div>
-            {activeRound.endsAt && <p className="text-sm text-muted">Round ends {formatDateTime(activeRound.endsAt)}</p>}
+            {activeRound.endsAt && <div className="text-right"><RoundTimer endsAt={activeRound.endsAt.toISOString()} /><p className="mt-1 text-xs text-muted">Ends {formatDateTime(activeRound.endsAt, tournament.timezone)}</p></div>}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {activeMatches.map((match) => (
               <Link key={match.id} href={`/tournaments/${id}/match/${match.id}`} className="rounded-lg border border-border bg-background/40 p-4 hover:border-accent transition-colors">
                 <div className="flex justify-between text-xs text-muted mb-3"><span>Table {match.tableNumber ?? '—'}</span><span className="uppercase">{match.status}</span></div>
                 <div className="space-y-1">
-                  {match.players.map((player) => <p key={player.userId} className="font-medium">{player.displayName} <span className="text-muted font-normal">@{player.username}</span></p>)}
+                  {match.players.map((player) => <p key={player.participantId} className="font-medium">{player.displayName}{player.username && <span className="text-muted font-normal"> @{player.username}</span>}{player.isGuest && <span className="ml-2 text-xs text-accent">walk-in</span>}</p>)}
                 </div>
               </Link>
             ))}
@@ -79,12 +86,12 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
         <section className="card">
           <h2 className="text-xl font-bold mb-5">Standings</h2>
           {standings.length === 0 ? <p className="text-muted text-sm">Standings will appear after the first result is confirmed.</p> : (
-            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-border text-muted text-left"><th className="py-2 pr-3">#</th><th className="py-2 pr-3">Player</th><th className="py-2 pr-3">Pts</th><th className="py-2 pr-3">Record</th><th className="py-2">OMW%</th></tr></thead><tbody>{standings.map((standing) => <tr key={standing.userId} className="border-b border-border/50"><td className="py-3 pr-3 font-mono">{standing.rank}</td><td className="py-3 pr-3"><Link href={`/profile/${standing.username}`} className="hover:text-accent">@{standing.username}</Link></td><td className="py-3 pr-3 font-bold">{standing.matchPoints}</td><td className="py-3 pr-3 font-mono">{standing.matchWins}-{standing.matchLosses}-{standing.matchDraws}</td><td className="py-3 font-mono">{(standing.opponentMatchWinPercentage * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-border text-muted text-left"><th className="py-2 pr-3">#</th><th className="py-2 pr-3">Player</th><th className="py-2 pr-3">Pts</th><th className="py-2 pr-3">Record</th><th className="py-2">OMW%</th></tr></thead><tbody>{standings.map((standing) => <tr key={standing.participantId} className="border-b border-border/50"><td className="py-3 pr-3 font-mono">{standing.rank}</td><td className="py-3 pr-3">{standing.username ? <Link href={`/profile/${standing.username}`} className="hover:text-accent">{standing.displayName} <span className="text-muted">@{standing.username}</span></Link> : <span>{standing.displayName} <span className="text-xs text-accent">walk-in</span></span>}</td><td className="py-3 pr-3 font-bold">{standing.matchPoints}</td><td className="py-3 pr-3 font-mono">{standing.matchWins}-{standing.matchLosses}-{standing.matchDraws}</td><td className="py-3 font-mono">{(standing.opponentMatchWinPercentage * 100).toFixed(1)}%</td></tr>)}</tbody></table></div>
           )}
         </section>
         <section className="card">
           <h2 className="text-xl font-bold mb-5">Players <span className="text-muted font-normal">({registered.length})</span></h2>
-          {registered.length === 0 ? <p className="text-sm text-muted">Be the first player to join.</p> : <div className="space-y-2">{registered.map((player) => <Link key={player.id} href={`/profile/${player.username}`} className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2 hover:bg-card-hover"><span>@{player.username}</span><span className="text-xs text-muted">{player.status.replace('_', ' ')}</span></Link>)}</div>}
+          {registered.length === 0 ? <p className="text-sm text-muted">Be the first player to join.</p> : <div className="space-y-2">{registered.map((player) => player.username ? <Link key={player.id} href={`/profile/${player.username}`} className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2 hover:bg-card-hover"><span>{player.displayName} <span className="text-muted">@{player.username}</span></span><span className="text-xs text-muted">{player.status.replace('_', ' ')}</span></Link> : <div key={player.id} className="flex items-center justify-between rounded-lg bg-background/40 px-3 py-2"><span>{player.displayName} <span className="ml-1 text-xs text-accent">walk-in</span></span><span className="text-xs text-muted">{player.status.replace('_', ' ')}</span></div>)}</div>}
           {isOrganizer && <div className="mt-5 pt-4 border-t border-border text-sm text-muted">Access key: <span className="font-mono text-accent">{tournament.accessKey}</span></div>}
         </section>
       </div>

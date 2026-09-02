@@ -1,12 +1,14 @@
 export type StandingPlayer = {
-  userId: string
-  username: string
+  participantId: string
+  userId: string | null
+  username: string | null
+  displayName: string
   rating: number
 }
 
 export type CompletedMatch = {
   playerResults: Array<{
-    userId: string
+    participantId: string
     result: 'win' | 'loss' | 'draw' | 'bye' | 'placement' | null
     placement: number | null
     gamesWon: number
@@ -23,7 +25,7 @@ export type Standing = StandingPlayer & {
   gameWins: number
   gameLosses: number
   gameDraws: number
-  opponentIds: Set<string>
+  opponentIds: string[]
   matchWinPercentage: number
   gameWinPercentage: number
   opponentMatchWinPercentage: number
@@ -38,7 +40,7 @@ export type Standing = StandingPlayer & {
 export function calculateStandings(players: readonly StandingPlayer[], matches: readonly CompletedMatch[]): Standing[] {
   const standings = new Map<string, Standing>()
   for (const player of players) {
-    standings.set(player.userId, {
+    standings.set(player.participantId, {
       ...player,
       rank: 0,
       matchPoints: 0,
@@ -48,7 +50,7 @@ export function calculateStandings(players: readonly StandingPlayer[], matches: 
       gameWins: 0,
       gameLosses: 0,
       gameDraws: 0,
-      opponentIds: new Set(),
+      opponentIds: [],
       matchWinPercentage: 0,
       gameWinPercentage: 0,
       opponentMatchWinPercentage: 0,
@@ -57,12 +59,12 @@ export function calculateStandings(players: readonly StandingPlayer[], matches: 
   }
 
   for (const match of matches) {
-    const participants = match.playerResults.filter((entry) => standings.has(entry.userId))
+    const participants = match.playerResults.filter((entry) => standings.has(entry.participantId))
     for (const entry of participants) {
-      const standing = standings.get(entry.userId)
+      const standing = standings.get(entry.participantId)
       if (!standing) continue
-      const opponents = participants.filter((candidate) => candidate.userId !== entry.userId)
-      opponents.forEach((opponent) => standing.opponentIds.add(opponent.userId))
+      const opponents = participants.filter((candidate) => candidate.participantId !== entry.participantId)
+      opponents.forEach((opponent) => standing.opponentIds.push(opponent.participantId))
 
       standing.gameWins += entry.gamesWon
       standing.gameDraws += entry.gamesDrawn
@@ -87,17 +89,17 @@ export function calculateStandings(players: readonly StandingPlayer[], matches: 
   for (const standing of standings.values()) {
     const matchesPlayed = standing.matchWins + standing.matchLosses + standing.matchDraws
     const gamesPlayed = standing.gameWins + standing.gameLosses + standing.gameDraws
-    standing.matchWinPercentage = matchesPlayed ? (standing.matchWins + standing.matchDraws * 0.5) / matchesPlayed : 0
-    standing.gameWinPercentage = gamesPlayed ? (standing.gameWins + standing.gameDraws * 0.5) / gamesPlayed : 0
+    standing.matchWinPercentage = matchesPlayed ? (standing.matchWins * 3 + standing.matchDraws) / (matchesPlayed * 3) : 0
+    standing.gameWinPercentage = gamesPlayed ? (standing.gameWins * 3 + standing.gameDraws) / (gamesPlayed * 3) : 0
   }
 
   for (const standing of standings.values()) {
-    const opponents = [...standing.opponentIds].map((id) => standings.get(id)).filter((value): value is Standing => Boolean(value))
+    const opponents = standing.opponentIds.map((id) => standings.get(id)).filter((value): value is Standing => Boolean(value))
     standing.opponentMatchWinPercentage = opponents.length
-      ? opponents.reduce((total, opponent) => total + opponent.matchWinPercentage, 0) / opponents.length
+      ? opponents.reduce((total, opponent) => total + Math.max(0.33, opponent.matchWinPercentage), 0) / opponents.length
       : 0
     standing.opponentGameWinPercentage = opponents.length
-      ? opponents.reduce((total, opponent) => total + opponent.gameWinPercentage, 0) / opponents.length
+      ? opponents.reduce((total, opponent) => total + Math.max(0.33, opponent.gameWinPercentage), 0) / opponents.length
       : 0
   }
 
@@ -108,7 +110,7 @@ export function calculateStandings(players: readonly StandingPlayer[], matches: 
       right.gameWinPercentage - left.gameWinPercentage ||
       right.opponentGameWinPercentage - left.opponentGameWinPercentage ||
       right.rating - left.rating ||
-      left.username.localeCompare(right.username),
+      left.displayName.localeCompare(right.displayName),
     )
     .map((standing, index) => ({ ...standing, rank: index + 1 }))
 }

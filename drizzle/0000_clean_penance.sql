@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";--> statement-breakpoint
 CREATE TYPE "public"."commander_mode" AS ENUM('duel', 'pods');--> statement-breakpoint
 CREATE TYPE "public"."deck_list_status" AS ENUM('draft', 'submitted', 'locked');--> statement-breakpoint
 CREATE TYPE "public"."match_kind" AS ENUM('head_to_head', 'commander_pod');--> statement-breakpoint
