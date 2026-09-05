@@ -18,7 +18,7 @@ import {
   userDecks,
 } from '@/lib/db/schema'
 import { validateStandardArenaDecklist } from '@/lib/decks/arena'
-import { nextDraftStep, seatDraftPods } from './draft'
+import { seatDraftPods } from './draft'
 import { createCommanderPodPairings, createSwissPairings, type PairingPlayer } from './pairing'
 import { validateHeadToHeadScores } from './scoring'
 import { calculateStandings, type CompletedMatch } from './standings'
@@ -502,34 +502,24 @@ export async function generateDraftSeating(tournamentId: string, userId: string)
   })
 }
 
-export async function startDraft(tournamentId: string, userId: string) {
-  await assertOrganizer(tournamentId, userId)
-  return getDb().transaction(async (tx) => {
-    const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
-    if (!tournament || tournament.format !== 'draft') throw new Error('This is not a Booster Draft event.')
-    if (!['registration', 'check_in'].includes(tournament.status)) throw new Error('This draft cannot be started now.')
-    if (tournament.draftStatus !== 'seating') throw new Error('Generate draft seating before starting the draft.')
-    const [seat] = await tx.select({ id: draftPodSeats.id }).from(draftPodSeats).innerJoin(draftPods, eq(draftPodSeats.podId, draftPods.id)).where(eq(draftPods.tournamentId, tournamentId)).limit(1)
-    if (!seat) throw new Error('Generate draft seating before starting the draft.')
-    await tx.update(tournaments).set({ draftStatus: 'drafting', draftPack: 1, draftPick: 1, draftStepEndsAt: new Date(Date.now() + tournament.draftPickTimeSeconds * 1000), updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
-    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'draft.started', entityType: 'tournament', entityId: tournamentId })
-  })
-}
-
-export async function advanceDraft(tournamentId: string, userId: string) {
+export async function startDeckBuilding(tournamentId: string, userId: string) {
   await assertOrganizer(tournamentId, userId)
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${tournamentId}))`)
     const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1)
-    if (!tournament || tournament.format !== 'draft' || tournament.draftStatus !== 'drafting') throw new Error('The timed draft is not active.')
-    if (tournament.status === 'cancelled') throw new Error('This event is cancelled.')
-    const next = nextDraftStep(tournament.draftPack, tournament.draftPick, tournament.draftPicksPerPack)
-    const draftStepEndsAt = next.status === 'drafting'
-      ? new Date(Date.now() + tournament.draftPickTimeSeconds * 1000)
-      : new Date(Date.now() + tournament.deckBuildingTimeMinutes * 60_000)
-    await tx.update(tournaments).set({ draftStatus: next.status, draftPack: next.pack, draftPick: next.pick, draftStepEndsAt, updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
-    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: next.status === 'drafting' ? 'draft.pick_advanced' : 'draft.deck_building_started', entityType: 'tournament', entityId: tournamentId, details: { pack: next.pack, pick: next.pick } })
-    return next
+    if (!tournament || tournament.format !== 'draft') throw new Error('This is not a Booster Draft event.')
+    if (!['registration', 'check_in'].includes(tournament.status)) throw new Error('Deck building cannot be started now.')
+    if (!['seating', 'drafting'].includes(tournament.draftStatus)) throw new Error('Generate draft seating before starting deck building.')
+    const [seat] = await tx.select({ id: draftPodSeats.id }).from(draftPodSeats).innerJoin(draftPods, eq(draftPodSeats.podId, draftPods.id)).where(eq(draftPods.tournamentId, tournamentId)).limit(1)
+    if (!seat) throw new Error('Generate draft seating before starting deck building.')
+    await tx.update(tournaments).set({
+      draftStatus: 'deck_building',
+      draftPack: 0,
+      draftPick: 0,
+      draftStepEndsAt: new Date(Date.now() + tournament.deckBuildingTimeMinutes * 60_000),
+      updatedAt: new Date(),
+    }).where(eq(tournaments.id, tournamentId))
+    await tx.insert(auditEvents).values({ tournamentId, actorId: userId, action: 'draft.deck_building_started', entityType: 'tournament', entityId: tournamentId })
   })
 }
 
@@ -678,8 +668,8 @@ export async function startNextRound(tournamentId: string, userId: string) {
       .select({ id: rounds.id, status: rounds.status, isTopCut: rounds.isTopCut })
       .from(rounds)
       .where(eq(rounds.tournamentId, tournamentId))
-    if (tournament.format === 'draft' && !existingRounds.length && tournament.draftStatus !== 'complete') {
-      throw new Error('Complete or skip the draft seating workflow before starting round one.')
+    if (tournament.format === 'draft' && !existingRounds.length && !['deck_building', 'complete'].includes(tournament.draftStatus)) {
+      throw new Error('Start deck building before generating round one pairings.')
     }
     if (existingRounds.some((round) => round.status === 'active')) {
       throw new Error('Complete the active round before generating another one.')
@@ -743,7 +733,13 @@ export async function startNextRound(tournamentId: string, userId: string) {
         eq(tournamentParticipants.tournamentId, tournamentId),
         inArray(tournamentParticipants.status, [...eligibleStatuses]),
       ))
-    await tx.update(tournaments).set({ status: 'active', updatedAt: new Date() }).where(eq(tournaments.id, tournamentId))
+    const beginsDraftRoundOne = tournament.format === 'draft' && existingRounds.length === 0
+    await tx.update(tournaments).set({
+      status: 'active',
+      draftStatus: beginsDraftRoundOne ? 'complete' : tournament.draftStatus,
+      draftStepEndsAt: beginsDraftRoundOne ? null : tournament.draftStepEndsAt,
+      updatedAt: new Date(),
+    }).where(eq(tournaments.id, tournamentId))
     await tx.insert(auditEvents).values({
       tournamentId,
       actorId: userId,

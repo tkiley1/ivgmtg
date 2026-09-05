@@ -31,12 +31,3 @@ export function seatDraftPods<T>(players: readonly T[], random: () => number = M
     return pod
   })
 }
-
-export function nextDraftStep(pack: number, pick: number, picksPerPack = 14) {
-  if (pack < 1 || pack > 3 || pick < 1 || pick > picksPerPack || picksPerPack < 1 || picksPerPack > 30) {
-    throw new Error('The current draft step is invalid.')
-  }
-  if (pick < picksPerPack) return { status: 'drafting' as const, pack, pick: pick + 1 }
-  if (pack < 3) return { status: 'drafting' as const, pack: pack + 1, pick: 1 }
-  return { status: 'deck_building' as const, pack: 3, pick: picksPerPack }
-}

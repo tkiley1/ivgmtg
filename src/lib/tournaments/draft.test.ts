@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { draftPodSizes, nextDraftStep, seatDraftPods, shuffleValues } from './draft'
+import { draftPodSizes, seatDraftPods, shuffleValues } from './draft'
 
 describe('draftPodSizes', () => {
   it('uses one pod for up to eight players', () => {
@@ -28,13 +28,5 @@ describe('seatDraftPods', () => {
 
   it('supports deterministic randomness in tests', () => {
     expect(shuffleValues(['a', 'b', 'c'], () => 0)).toEqual(['b', 'c', 'a'])
-  })
-})
-
-describe('nextDraftStep', () => {
-  it('advances picks, packs, and then deck building', () => {
-    expect(nextDraftStep(1, 1)).toEqual({ status: 'drafting', pack: 1, pick: 2 })
-    expect(nextDraftStep(1, 14)).toEqual({ status: 'drafting', pack: 2, pick: 1 })
-    expect(nextDraftStep(3, 14)).toEqual({ status: 'deck_building', pack: 3, pick: 14 })
   })
 })

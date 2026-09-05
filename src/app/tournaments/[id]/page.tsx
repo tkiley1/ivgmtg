@@ -26,7 +26,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-7">
-      <LiveTournamentRefresh enabled={Boolean(activeRound || tournament.draftStatus === 'drafting' || tournament.draftStatus === 'deck_building')} />
+      <LiveTournamentRefresh enabled={Boolean(activeRound || ['seating', 'drafting', 'deck_building'].includes(tournament.draftStatus))} />
       <section className="card overflow-hidden relative">
         <div className="absolute right-0 top-0 w-48 h-48 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
         <div className="relative flex flex-col lg:flex-row lg:items-start justify-between gap-6">
@@ -57,7 +57,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
         </div>
       </section>
 
-      {tournament.format === 'draft' && <DraftWorkspace tournamentId={id} status={tournament.draftStatus} pack={tournament.draftPack} pick={tournament.draftPick} picksPerPack={tournament.draftPicksPerPack} endsAt={tournament.draftStepEndsAt?.toISOString() ?? null} pods={draftPods} isOrganizer={isOrganizer} />}
+      {tournament.format === 'draft' && <DraftWorkspace tournamentId={id} status={tournament.draftStatus} endsAt={tournament.draftStepEndsAt?.toISOString() ?? null} pods={draftPods} isOrganizer={isOrganizer} />}
 
       {activeRound && (
         <section className="card">

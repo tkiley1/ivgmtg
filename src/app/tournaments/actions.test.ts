@@ -16,7 +16,6 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/auth/session', () => ({ requireCurrentUser: mocks.requireCurrentUser }))
 vi.mock('@/lib/tournaments/service', () => ({
   addWalkInParticipant: vi.fn(),
-  advanceDraft: vi.fn(),
   cancelTournament: vi.fn(),
   checkInToTournament: vi.fn(),
   completeActiveRound: vi.fn(),
@@ -33,7 +32,7 @@ vi.mock('@/lib/tournaments/service', () => ({
   removeParticipant: vi.fn(),
   reportMatchResult: vi.fn(),
   resetActiveRound: vi.fn(),
-  startDraft: vi.fn(),
+  startDeckBuilding: vi.fn(),
   startNextRound: vi.fn(),
   submitStandardDeckList: vi.fn(),
   swapActiveRoundPlayers: vi.fn(),

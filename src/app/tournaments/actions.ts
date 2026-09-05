@@ -6,7 +6,6 @@ import { z } from 'zod'
 import { requireCurrentUser } from '@/lib/auth/session'
 import {
   addWalkInParticipant,
-  advanceDraft,
   cancelTournament,
   completeActiveRound,
   completeDraft,
@@ -23,7 +22,7 @@ import {
   removeParticipant,
   reportMatchResult,
   resetActiveRound,
-  startDraft,
+  startDeckBuilding,
   startNextRound,
   submitStandardDeckList,
   swapActiveRoundPlayers,
@@ -244,12 +243,8 @@ export async function generateDraftSeatingAction(_: TournamentActionState, formD
   return runTournamentCommand(formData, generateDraftSeating)
 }
 
-export async function startDraftAction(_: TournamentActionState, formData: FormData) {
-  return runTournamentCommand(formData, startDraft)
-}
-
-export async function advanceDraftAction(_: TournamentActionState, formData: FormData) {
-  return runTournamentCommand(formData, advanceDraft)
+export async function startDeckBuildingAction(_: TournamentActionState, formData: FormData) {
+  return runTournamentCommand(formData, startDeckBuilding)
 }
 
 export async function completeDraftAction(_: TournamentActionState, formData: FormData) {

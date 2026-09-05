@@ -19,6 +19,7 @@ export function OrganizerRoundControls({
   roundCount,
   status,
   hasWaitlist,
+  draftReadyForPairings,
 }: {
   tournamentId: string
   hasActiveRound: boolean
@@ -26,6 +27,7 @@ export function OrganizerRoundControls({
   roundCount: number
   status: 'registration' | 'check_in' | 'active' | 'top_cut' | 'completed' | 'draft' | 'cancelled'
   hasWaitlist: boolean
+  draftReadyForPairings: boolean
 }) {
   const [startState, startAction, startPending] = useActionState(startRoundAction, initialState)
   const [completeState, completeAction, completePending] = useActionState(completeRoundAction, initialState)
@@ -33,7 +35,7 @@ export function OrganizerRoundControls({
   const [waitlistState, waitlistAction, waitlistPending] = useActionState(promoteWaitlistAction, initialState)
   const [resetState, resetAction, resetPending] = useActionState(resetActiveRoundAction, initialState)
   const canStart = !hasActiveRound && (
-    (['registration', 'check_in', 'active'].includes(status) && completedRounds < roundCount) ||
+    (draftReadyForPairings && ['registration', 'check_in', 'active'].includes(status) && completedRounds < roundCount) ||
     status === 'top_cut'
   )
 

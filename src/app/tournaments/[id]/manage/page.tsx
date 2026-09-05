@@ -29,7 +29,7 @@ export default async function ManageTournamentPage({ params }: { params: Promise
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-7">
-      <LiveTournamentRefresh enabled={Boolean(activeRound || tournament.draftStatus === 'drafting' || tournament.draftStatus === 'deck_building')} />
+      <LiveTournamentRefresh enabled={Boolean(activeRound || ['seating', 'drafting', 'deck_building'].includes(tournament.draftStatus))} />
       <div className="flex items-center justify-between gap-4">
         <div><Link href={`/tournaments/${id}`} className="text-sm text-muted hover:text-foreground">← Back to event</Link><h1 className="text-3xl font-bold mt-3">Organizer controls</h1></div>
         <span className={`badge ${statusBadgeClass(tournament.status)}`}>{displayStatus(tournament.status)}</span>
@@ -39,7 +39,7 @@ export default async function ManageTournamentPage({ params }: { params: Promise
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Round control</p>
         <h2 className="text-2xl font-bold mt-2 mb-2">{tournament.name}</h2>
         <p className="text-muted mb-5">{participants.filter((player) => player.status === 'active' || player.status === 'registered' || player.status === 'checked_in').length} registered · {checkedIn} checked in · {waitlisted} waitlisted · {completedRounds} / {tournament.roundCount} Swiss rounds complete</p>
-        <OrganizerRoundControls tournamentId={id} hasActiveRound={Boolean(activeRound)} completedRounds={completedRounds} roundCount={tournament.roundCount} status={tournament.status} hasWaitlist={waitlisted > 0} />
+        <OrganizerRoundControls tournamentId={id} hasActiveRound={Boolean(activeRound)} completedRounds={completedRounds} roundCount={tournament.roundCount} status={tournament.status} hasWaitlist={waitlisted > 0} draftReadyForPairings={tournament.format !== 'draft' || ['deck_building', 'complete'].includes(tournament.draftStatus)} />
         {activeRound?.endsAt && <div className="mt-5 flex items-center justify-between rounded-lg border border-border bg-background/40 p-4"><span className="text-sm text-muted">Round time remaining</span><RoundTimer endsAt={activeRound.endsAt.toISOString()} /></div>}
       </section>
 
